@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI 1週間予約表（A4横）</title>
+    <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        body { font-family: sans-serif; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; white-space: nowrap; }
+        th { background: #eee; height: 30px; }
+        .time-col { font-weight: bold; width: 60px; }
+        /* 過去の撮影済みデータ（蛍光色の赤系） */
+        .done-past { background-color: #ffcccc !important; }
+        .no-print { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="shiftWeek(-1)">◀ 前の週</button>
+        <span id="weekTitle" style="margin: 0 15px; font-weight:bold;"></span>
+        <button onclick="shiftWeek(1)">次の週 ▶</button>
+        <button onclick="window.print()">🖨️ A4横で印刷</button>
+    </div>
+    <table>
+        <thead><tr id="headerRow"><th>時間</th></tr></thead>
+        <tbody id="bodyRows"></tbody>
+    </table>
+
+    <script>
+        let monday = getMonday(new Date());
+        function getMonday(d) { let day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1); return new Date(d.setDate(diff)); }
+        
+        async function load() {
+            const hRow = document.getElementById("headerRow");
+            const bRows = document.getElementById("bodyRows");
+            hRow.innerHTML = "<th>時間</th>"; bRows.innerHTML = "";
+            
+            const days = ['月','火','水','木','金','土'];
+            const today = new Date(); today.setHours(0,0,0,0);
+
+            for(let i=0; i<6; i++) {
+                let d = new Date(monday); d.setDate(d.getDate() + i);
+                hRow.innerHTML += `<th>${days[i]}<br>${d.getMonth()+1}/${d.getDate()}</th>`;
+            }
+            document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
+
+            let weekData = {};
+            for(let i=0; i<6; i++) {
+                let d = new Date(monday); d.setDate(d.getDate() + i);
+                let dateStr = d.toISOString().split("T")[0];
+                let res = await fetch(`/api/slots?date=${dateStr}`);
+                weekData[i] = await res.json();
+            }
+
+            const allTimes = [...new Set(Object.values(weekData).flat().map(s => s.time))].sort();
+            allTimes.forEach(time => {
+                let row = `<tr><td class="time-col">${time}</td>`;
+                for(let i=0; i<6; i++) {
+                    let d = new Date(monday); d.setDate(d.getDate() + i);
+                    const slot = weekData[i].find(s => s.time === time);
+                    
+                    // 過去かつ撮影済みの判定
+                    let isPastDone = (d < today && slot?.status === 'done');
+                    let cellClass = isPastDone ? 'class="done-past"' : '';
+                    
+                    let content = slot ? `${slot.patient_name || ''}<br><small>${slot.part || ''}</small>` : '';
+                    row += `<td ${cellClass}>${content}</td>`;
+                }
+                bRows.innerHTML += row + "</tr>";
+            });
+        }
+        function shiftWeek(n) { monday.setDate(monday.getDate() + (n * 7)); load(); }
+        load();
+    </script>
+</body>
+</html>

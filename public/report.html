@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI統計レポート - 印刷最適化版</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        
+        /* 印刷時に「戻る」ボタンやフィルターを隠す */
+        @media print {
+            .nav, .filter-section { display: none; }
+            body { background: white; padding: 0; }
+            .container { box-shadow: none; border: none; width: 100%; max-width: none; }
+            .chart-box { break-inside: avoid; } /* グラフの途中でページを切らない */
+        }
+
+        .nav { margin-bottom: 20px; }
+        .nav a { text-decoration: none; color: #2196f3; font-weight: bold; }
+        
+        .filter-section { background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
+        
+        /* グラフエリア */
+        .charts-row { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 30px; 
+            margin-bottom: 60px; /* グラフ下の余白を広げてテーブルと離す */
+        }
+        .chart-box { 
+            flex: 1; 
+            min-width: 500px; 
+            height: 400px; 
+            background: #fff; 
+            border: 1px solid #eee; 
+            padding: 20px; 
+            border-radius: 10px;
+            position: relative; 
+            box-sizing: border-box;
+        }
+        
+        /* 詳細集計セクション */
+        .table-section {
+            margin-top: 50px; /* グラフとの距離をさらに確保 */
+            border-top: 2px solid #eee;
+            padding-top: 30px;
+            page-break-before: auto; /* 状況に応じて改ページを許可 */
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { border: 1px solid #e0e0e0; padding: 12px; text-align: center; }
+        th { background: #f8f9fa; color: #666; font-size: 0.9em; }
+        tr:nth-child(even) { background-color: #fafafa; }
+        .highlight { font-weight: bold; color: #e91e63; }
+
+        .kpi-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 40px; page-break-inside: avoid; }
+        .kpi-card { padding: 20px; border-radius: 10px; color: white; text-align: center; }
+        .kpi-yearly { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+        .kpi-total { background: linear-gradient(135deg, #43a047, #2e7d32); }
+        .kpi-value { display: block; font-size: 2.5em; font-weight: bold; margin: 5px 0; }
+        .kpi-label { font-size: 0.9em; opacity: 0.9; }
+
+        @media (max-width: 600px) { .chart-box { min-width: 100%; } .kpi-container { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="nav"><a href="index.html">← 予約管理画面へ戻る</a></div>
+    <h1>MRI稼働統計レポート</h1>
+
+    <div class="filter-section">
+        基準年月の選択: <input type="month" id="monthInput" style="padding:8px; border:1px solid #ddd; border-radius:4px;">
+        <button onclick="updateCharts()" style="padding:8px 20px; background:#607d8b; color:white; border:none; border-radius:4px; cursor:pointer;">統計を更新</button>
+        <button onclick="window.print()" style="padding:8px 20px; background:#4caf50; color:white; border:none; border-radius:4px; cursor:pointer;">PDF/印刷</button>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-box">
+            <h3 style="margin-top:0;" id="barChartTitle">担当医別実績</h3>
+            <div style="height: calc(100% - 40px);"><canvas id="barChart"></canvas></div>
+        </div>
+        <div class="chart-box">
+            <h3 style="margin-top:0;">過去3年間の撮影推移</h3>
+            <div style="height: calc(100% - 40px);"><canvas id="lineChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="table-section">
+        <h3 id="tableTitle">医師別詳細集計</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>担当医</th>
+                    <th>通常撮影</th>
+                    <th>読影提出</th>
+                    <th>合計件数</th>
+                    <th>読影率</th>
+                </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+            <tfoot id="summaryFoot" style="font-weight:bold; background:#eee;"></tfoot>
+        </table>
+    </div>
+
+    <div class="kpi-container">
+        <div class="kpi-card kpi-yearly">
+            <span class="kpi-label" id="yearlyLabel">年間合計</span>
+            <span class="kpi-value" id="yearlyTotal">0</span>
+            <span class="kpi-label">件</span>
+        </div>
+        <div class="kpi-card kpi-total">
+            <span class="kpi-label">導入以来 累計撮影数</span>
+            <span class="kpi-value" id="grandTotal">0</span>
+            <span class="kpi-label">件</span>
+        </div>
+    </div>
+</div>
+
+<script>
+// (中身のJavaScriptはタイトル自動更新を含め、前回のものをそのまま継承)
+document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
+let chart1 = null, chart2 = null;
+const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木"];
+
+async function updateCharts() {
+    try {
+        const res = await fetch('/api/report/all');
+        const raw = await res.json();
+        const selMonth = document.getElementById("monthInput").value;
+        const [year, month] = selMonth.split('-');
+        const displayMonth = `${year}年${month}月`;
+
+        document.getElementById("barChartTitle").innerText = `担当医別実績 (${displayMonth})`;
+        document.getElementById("tableTitle").innerText = `医師別詳細集計 (${displayMonth})`;
+
+        const monthly = raw.filter(r => r.date.startsWith(selMonth));
+        const barDataNormal = doctors.map(d => monthly.filter(r => r.doctor === d && r.is_remote === 0).reduce((a,b)=>a+b.count, 0));
+        const barDataRemote = doctors.map(d => monthly.filter(r => r.doctor === d && r.is_remote === 1).reduce((a,b)=>a+b.count, 0));
+
+        let tN = 0, tR = 0;
+        document.getElementById("summaryBody").innerHTML = doctors.map((d, i) => {
+            const n = barDataNormal[i];
+            const r = barDataRemote[i];
+            const total = n + r;
+            const rate = total > 0 ? ((r / total) * 100).toFixed(1) : "0.0";
+            tN += n; tR += r;
+            return `<tr><td>${d}</td><td>${n}</td><td>${r}</td><td>${total}</td><td class="highlight">${rate}%</td></tr>`;
+        }).join("");
+
+        const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
+        document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
+
+        document.getElementById("yearlyLabel").innerText = `${year}年 年間合計`;
+        document.getElementById("yearlyTotal").innerText = raw.filter(r => r.date.startsWith(year)).reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
+        document.getElementById("grandTotal").innerText = raw.reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
+
+        if(chart1) chart1.destroy();
+        chart1 = new Chart(document.getElementById('barChart'), {
+            type: 'bar',
+            data: { 
+                labels: doctors, 
+                datasets: [
+                    { label:'通常撮影', data:barDataNormal, backgroundColor:'#1976d2', borderColor: '#1565c0', borderWidth: 1 }, 
+                    { label:'読影依頼', data:barDataRemote, backgroundColor:'#d81b60', borderColor: '#c2185b', borderWidth: 1 }
+                ]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked:true, grid: { display: false } }, y: { stacked:true, beginAtZero: true, grid: { color: '#eaeaea' } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+
+        const selYearInt = parseInt(year);
+        const years = [selYearInt, selYearInt - 1, selYearInt - 2];
+        const colors = ['#0288d1', '#43a047', '#f57c00'];
+        const lineSets = years.map((y, i) => {
+            const counts = [];
+            for(let m=1; m<=12; m++) {
+                const mStr = `${y}-${String(m).padStart(2,'0')}`;
+                counts.push(raw.filter(r => r.date.startsWith(mStr)).reduce((sum, item) => sum + (item.count || 0), 0));
+            }
+            return { 
+                label: `${y}年`, data: counts, borderColor: colors[i], backgroundColor: colors[i],
+                fill: false, tension: 0.15, borderWidth: 3, pointRadius: 4
+            };
+        });
+
+        if(chart2) chart2.destroy();
+        chart2 = new Chart(document.getElementById('lineChart'), {
+            type: 'line',
+            data: { labels: Array.from({length:12}, (_,i)=>`${i+1}月`), datasets: lineSets },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, grid: { color: '#eaeaea' }, title: { display: true, text: '撮影件数' } }, x: { grid: { display: false } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    } catch (e) {
+        console.error("統計更新エラー:", e);
+    }
+}
+updateCharts();
+</script>
+</body>
+</html>

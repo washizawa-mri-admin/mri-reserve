@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI予約管理</title>
+    <style>
+        :root { --waiting: #fff4e5; --scanning: #e3f2fd; --done: #e8f5e9; --remote: #fce4ec; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
+        .card { max-width: 950px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 15px; padding-bottom: 15px; }
+        .summary-panel { display: flex; gap: 10px; margin-bottom: 20px; }
+        .summary-item { flex: 1; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
+        .count { display: block; font-size: 1.8em; }
+        .slot { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 8px; background: white; }
+        .status- { background: #ffffff !important; border-left: 8px solid #cccccc !important; }
+        .status-waiting { background: var(--waiting) !important; border-left: 8px solid #ffa726 !important; }
+        .status-scanning { background: var(--scanning) !important; border-left: 8px solid #2196f3 !important; }
+        .status-done { background: var(--done) !important; border-left: 8px solid #4caf50 !important; opacity: 0.8; }
+        .remote-active { background: var(--remote) !important; border: 2px solid #e91e63 !important; }
+        .time { width: 110px; font-weight: bold; line-height: 1.2; }
+        .patient-tag { color: #e91e63; font-size: 0.8em; font-weight: bold; }
+        .actions { flex-grow: 1; text-align: right; }
+        button { padding: 6px 10px; margin-left: 4px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9em; }
+        .btn-add { background: #673ab7; color: white; } 
+        .btn-del { background: #ddd; color: #333; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="header">
+        <h1>MRI 予約管理</h1>
+        <div>
+            <a href="print.html" style="text-decoration:none; background:#4caf50; color:white; padding:8px 15px; border-radius:6px; margin-right:10px;">🖨️ 印刷用一覧</a>
+            <input type="date" id="datePicker" style="padding:8px;">
+            <a href="report.html" style="margin-left:10px; text-decoration:none; background:#607d8b; color:white; padding:8px 15px; border-radius:6px;">📊 レポート</a>
+        </div>
+    </div>
+    <div class="summary-panel">
+        <div class="summary-item" style="background: var(--waiting);">待ち <span id="count-waiting" class="count">0</span></div>
+        <div class="summary-item" style="background: var(--scanning);">撮影中 <span id="count-scanning" class="count">0</span></div>
+        <div class="summary-item" style="background: var(--done);">終了 <span id="count-done" class="count">0</span></div>
+    </div>
+    <div id="list"></div>
+</div>
+
+<script>
+const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木"];
+let today = new Date().toISOString().split("T")[0];
+document.getElementById("datePicker").value = today;
+
+function load() {
+    fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
+        const list = document.getElementById("list"); list.innerHTML = "";
+        let counts = { waiting: 0, scanning: 0, done: 0 };
+        data.forEach(item => {
+            const status = item.status || '';
+            if (counts.hasOwnProperty(status)) counts[status]++;
+            
+            const div = document.createElement("div");
+            div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
+            
+            const nameArea = item.patient_name 
+                ? `<span style="font-weight:bold; margin-right:10px;">${item.patient_name} [${item.part || ''}]</span>`
+                : `<input type="text" placeholder="当日患者名" id="name-${item.id}" style="padding:5px; width:150px; margin-right:10px;">`;
+
+            div.innerHTML = `
+                <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
+                <div class="actions">
+                    ${nameArea}
+                    Dr: <select onchange="update(${item.id}, null, this.value)">
+                        <option value="">--</option>
+                        ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
+                    </select>
+                    <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
+                    <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
+                    <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
+                    <button onclick="requestRemote(${item.id})" style="background:#e91e63;color:white">読影</button>
+                    <button class="btn-add" onclick="addSlot()">＋枠</button>
+                    <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
+                </div>`;
+            list.appendChild(div);
+        });
+        document.getElementById("count-waiting").innerText = counts.waiting;
+        document.getElementById("count-scanning").innerText = counts.scanning;
+        document.getElementById("count-done").innerText = counts.done;
+    }).catch(err => {
+        console.error("データ読み込みエラー:", err);
+    });
+}
+
+function update(id, status, doctor) {
+    const body = { id, doctor };
+    if (status !== null) body.status = status;
+    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(load); 
+}
+
+function updateWithOption(id, status) {
+    const name = document.getElementById(`name-${id}`)?.value;
+    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status, patient_name: name}) }).then(load);
+}
+
+function startWithOption(id) {
+    const name = document.getElementById(`name-${id}`)?.value;
+    fetch("/api/start", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, patient_name: name}) }).then(load);
+}
+
+function finishScan(id) { 
+    fetch("/api/finish", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id}) }).then(load); 
+}
+
+function requestRemote(id) {
+    const pid = prompt("患者ID"); if(!pid) return;
+    let pname = prompt("苗字(カタカナ)"); if(!pname) return;
+    fetch("/api/remote", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, patient_id: pid, patient_name: pname}) }).then(load);
+}
+
+function deleteSlot(id) { 
+    if(confirm("削除しますか？")) fetch("/api/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id}) }).then(load); 
+}
+
+function addSlot() {
+    fetch("/api/add", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({ date: today }) 
+    }).then(load);
+}
+
+document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>
