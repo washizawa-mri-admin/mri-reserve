@@ -3,18 +3,18 @@ const { createClient } = require('@supabase/supabase-js');
 const basicAuth = require("express-basic-auth");
 const app = express();
 
-const SUPABASE_URL = "https://pjsahgywykeevrkwzwqw.supabase.co";
-const SUPABASE_KEY = "sb_secret_xPQ6kylsXER-mXqgI1JyNA_Ld_aTieg";
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
 app.use(express.json());
 app.use(express.static("public"));
 
-// --- 予約枠生成（ダブり防止強化） ---
+// --- 予約枠生成 ---
 async function ensureSlotsExist(date) {
   const { data: existing } = await supabase.from('slots').select('id').eq('date', date).limit(1);
-  if (existing && existing.length > 0) return; // 1件でもあれば作成しない
+  if (existing && existing.length > 0) return;
 
   const d = new Date(date);
   const day = d.getDay();
@@ -63,10 +63,21 @@ app.post("/api/finish", async (req, res) => { await supabase.from('slots').updat
 app.post("/api/remote", async (req, res) => { await supabase.from('slots').update({ is_remote: 1, patient_id: req.body.patient_id, patient_name: req.body.patient_name, status: 'waiting' }).eq('id', req.body.id); res.json({ status: "ok" }); });
 app.post("/api/delete", async (req, res) => { await supabase.from('slots').delete().eq('id', req.body.id); res.json({ status: "ok" }); });
 
+// --- レポート用（過去データ対応版） ---
 app.get("/api/report/all", async (req, res) => {
     const { data } = await supabase.from('slots').select('*').eq('status', 'done');
-    const formatted = (data || []).map(r => ({ date: r.date, doctor: r.doctor || "未選択", is_remote: r.is_remote ? 1 : 0, count: 1 }));
+    const formatted = (data || []).map(r => {
+        // is_extraが1より大きければその数字を、そうでなければ1としてカウント
+        const actualCount = (r.is_extra > 1) ? r.is_extra : 1;
+        return { 
+            date: r.date, 
+            doctor: r.doctor || "未選択", 
+            is_remote: r.is_remote ? 1 : 0, 
+            count: actualCount 
+        };
+    });
     res.json(formatted);
 });
 
-app.listen(3000, "0.0.0.0", () => { console.log("MRIシステム完全版  起動中"); });
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => { console.log("MRIシステム完全版 起動中"); });
