@@ -4,48 +4,32 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const data2025 = [
-  { m: "04", c: 356 }, { m: "05", c: 352 }, { m: "06", c: 301 },
-  { m: "07", c: 250 }, { m: "08", c: 280 }, { m: "09", c: 303 },
-  { m: "10", c: 324 }, { m: "11", c: 304 }, { m: "12", c: 319 }
-];
-
-const data2026_01_Normal = [
-  { d: "鷲澤", c: 152 }, { d: "永野", c: 72 }, { d: "鷲澤匠", c: 26 },
-  { d: "木内", c: 25 }, { d: "石橋", c: 15 }, { d: "白石", c: 1 },
-  { d: "鈴木", c: 5 }, { d: "中村", c: 13 }, { d: "小谷野", c: 2 }
-];
-
-const data2026_01_Remote = [
-  { d: "鷲澤", c: 6 }, { d: "永野", c: 64 }, { d: "鷲澤匠", c: 4 },
-  { d: "木内", c: 11 }, { d: "鈴木", c: 5 }, { d: "中村", c: 4 }
+const recoveryData = [
+{ d: "2025-04-01", c: 356 }, { d: "2025-05-01", c: 352 }, { d: "2025-06-01", c: 301 },
+{ d: "2025-07-01", c: 250 }, { d: "2025-08-01", c: 280 }, { d: "2025-09-01", c: 303 },
+{ d: "2025-10-01", c: 324 }, { d: "2025-11-01", c: 304 }, { d: "2025-12-01", c: 319 },
+{ d: "2026-01-01", c: 306 },
+{ d: "2026-02-01", c: 320 },
+{ d: "2026-03-01", c: 285 }
 ];
 
 async function runImport() {
-  console.log("データ注入を開始します...");
+console.log("データベースのリセットと注入を開始します...");
+await supabase.from('slots').delete().neq('id', 0);
 
-  // 1. 2025年分
-  for (const item of data2025) {
-    await supabase.from('slots').insert([
-      { date: `2025-${item.m}-01`, time: '00:00', status: 'done', doctor: '過去合計', is_extra: item.c, is_remote: 0 }
-    ]);
-  }
-
-  // 2. 2026年1月 通常
-  for (const item of data2026_01_Normal) {
-    await supabase.from('slots').insert([
-      { date: '2026-01-01', time: '00:00', status: 'done', doctor: item.d, is_extra: item.c, is_remote: 0 }
-    ]);
-  }
-
-  // 3. 2026年1月 読影
-  for (const item of data2026_01_Remote) {
-    await supabase.from('slots').insert([
-      { date: '2026-01-01', time: '00:00', status: 'done', doctor: item.d, is_extra: item.c, is_remote: 1 }
-    ]);
-  }
-
-  console.log("✅ 全データの注入が完了しました！");
+for (const item of recoveryData) {
+await supabase.from('slots').insert([
+{
+date: item.d,
+time: '00:00',
+status: 'done',
+doctor: '過去合計',
+is_extra: item.c,
+is_remote: 0
+}
+]);
+}
+console.log("✅ 全データの土台作りが完了しました！");
 }
 
 runImport();
