@@ -1,8 +1,3 @@
-本当に申し訳ありません！システム上の不具合か、コードを囲む枠（ブロック）が小野さんの画面で消えてしまっているようです。
-
-今回は枠を一切使わず、普通の文章と同じ形式で全コードを書きます。これを丸ごとコピーしてGitHubの import.js に貼り付けてください。
-
-【ここからコピー：import.js の中身】
 
 const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
