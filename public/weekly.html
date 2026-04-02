@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI週間予約状況</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; }
+        .container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
+        h2 { text-align: center; color: #333; margin-bottom: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 800px; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 0.85em; }
+        th { background: #e9ecef; position: sticky; top: 0; }
+        .time-col { width: 60px; background: #f8f9fa; font-weight: bold; }
+        
+        .slot { cursor: pointer; height: 45px; vertical-align: top; transition: 0.2s; }
+        .slot:hover { background: #f1f3f5; }
+        .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        .patient-info { font-weight: bold; font-size: 0.9em; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .part-info { color: #666; font-size: 0.8em; }
+        .empty { color: #ccc; font-size: 0.8em; }
+        
+        .controls { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        
+        /* モーダル */
+        #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
+        .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
+        .btn-opt { padding: 10px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; }
+        .btn-opt.active { background: #007bff; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🗓 MRI 週間予約状況</h2>
+    <div class="controls">
+        <button onclick="changeWeek(-7)">◀ 前の週</button>
+        <span id="weekRange" style="font-weight:bold; font-size:1.1em;"></span>
+        <button onclick="changeWeek(7)">次の週 ▶</button>
+    </div>
+
+    <table id="weeklyTable">
+        <thead>
+            <tr id="dateHeader">
+                <th class="time-col">時間</th>
+                </tr>
+        </thead>
+        <tbody id="tableBody">
+            </tbody>
+    </table>
+</div>
+
+<div id="modal">
+    <div class="modal-content">
+        <h3 id="mTitle">予約登録</h3>
+        <input type="text" id="pName" placeholder="氏名(カタカナ)" style="width:100%; padding:10px; box-sizing:border-box; margin-bottom:10px;">
+        <p style="margin:5px 0">部位選択</p>
+        <div class="grid" id="partsGrid"></div>
+        <button onclick="save()" style="width:100%; padding:12px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1em; cursor:pointer;">登録確定</button>
+        <button onclick="closeModal()" style="width:100%; background:none; border:none; color:gray; margin-top:10px; cursor:pointer;">キャンセル</button>
+    </div>
+</div>
+
+<script>
+    let currentMonday = new Date();
+    // 今週の月曜日を計算
+    const day = currentMonday.getDay() || 7;
+    currentMonday.setDate(currentMonday.getDate() - day + 1);
+
+    const times = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
+    const parts = ["頚椎","胸椎","腰椎","肩","肘","手","股関節","大腿","膝","下腿","足関節"];
+    let curId, curP = "";
+
+    function loadWeek() {
+        const header = document.getElementById("dateHeader");
+        const body = document.getElementById("tableBody");
+        const rangeText = document.getElementById("weekRange");
+        
+        // ヘッダーのリセット
+        header.innerHTML = '<th class="time-col">時間</th>';
+        body.innerHTML = '';
+        
+        const dates = [];
+        const dayNames = ["月","火","水","木","金","土"];
+        
+        for(let i=0; i<6; i++) {
+            let d = new Date(currentMonday);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            dates.push(dateStr);
+            header.innerHTML += `<th>${d.getMonth()+1}/${d.getDate()}(${dayNames[i]})</th>`;
+        }
+        rangeText.innerText = `${dates[0]} 〜 ${dates[5]}`;
+
+        // 全枠のデータを取得
+        Promise.all(dates.map(d => fetch(`/api/slots?date=${d}`).then(res => res.json())))
+        .then(weekData => {
+            times.forEach(t => {
+                let row = `<tr><td class="time-col">${t}</td>`;
+                dates.forEach((dateStr, colIndex) => {
+                    const slot = weekData[colIndex].find(s => s.time === t);
+                    if (slot) {
+                        const isBooked = slot.patient_name;
+                        row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${slot.patient_name || ''}')">
+                                    ${isBooked ? `<span class="patient-info">${slot.patient_name}</span><span class="part-info">${slot.part || ''}</span>` : '<span class="empty">空き</span>'}
+                                </td>`;
+                    } else {
+                        row += `<td style="background:#f0f0f0;">-</td>`; // 枠なし（日祝など）
+                    }
+                });
+                row += '</tr>';
+                body.innerHTML += row;
+            });
+        });
+    }
+
+    function changeWeek(diff) {
+        currentMonday.setDate(currentMonday.getDate() + diff);
+        loadWeek();
+    }
+
+    function openModal(id, time, name) {
+        curId = id; curP = "";
+        document.getElementById('mTitle').innerText = time + " 予約";
+        document.getElementById('pName').value = name;
+        document.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
+        document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+    function save() {
+        const name = document.getElementById('pName').value;
+        fetch("/api/reserve", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({id: curId, patient_name: name, part: curP})
+        }).then(() => { closeModal(); loadWeek(); });
+    }
+
+    // 部位ボタン生成
+    const pGrid = document.getElementById("partsGrid");
+    parts.forEach(p => {
+        const b = document.createElement("div");
+        b.className = "btn-opt";
+        b.innerText = p;
+        b.onclick = () => {
+            document.querySelectorAll('.btn-opt').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            curP = p;
+        };
+        pGrid.appendChild(b);
+    });
+
+    loadWeek();
+</script>
+</body>
+</html>
