@@ -66,10 +66,13 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-            const nameArea = item.patient_name 
-                ? `<span style="font-weight:bold; margin-right:10px;">${item.patient_name} [${item.part || ''}]</span>`
-                : `<input type="text" placeholder="当日患者名" id="name-${item.id}" style="padding:5px; width:150px; margin-right:10px;">`;
+           const nameValue = item.patient_name || ""; 
+const partValue = item.part ? ` [${item.part}]` : "";
 
+const nameArea = `
+    <input type="text" value="${nameValue}" placeholder="患者名" id="name-${item.id}" style="padding:5px; width:150px; margin-right:10px;">
+    <span style="font-size:0.8em; color:#666;">${partValue}</span>
+`;
             div.innerHTML = `
                 <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                 <div class="actions">
