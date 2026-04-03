@@ -132,13 +132,16 @@
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
     function save() {
-        const name = document.getElementById('pName').value;
-        fetch("/api/reserve", {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({id: curId, patient_name: name, part: curP})
-        }).then(() => { closeModal(); loadWeek(); });
-    }
+    let name = document.getElementById('pName').value;
+    // 名前が空なら「予約済」という文字を自動で入れる
+    if (!name) name = "予約済"; 
+
+    fetch("/api/reserve", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({id: curId, patient_name: name, part: curP})
+    }).then(() => { closeModal(); loadWeek(); });
+}
 
     // 部位ボタン生成
     const pGrid = document.getElementById("partsGrid");
