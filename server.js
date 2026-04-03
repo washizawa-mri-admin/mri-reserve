@@ -80,4 +80,28 @@ app.get("/api/report/all", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// --- 週間ページ用のデータ取得窓口 ---
+app.get('/api/slots', async (req, res) => {
+    const { date } = req.query;
+    const { data, error } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('date', date)
+        .order('time', { ascending: true });
+    if (error) return res.status(500).json(error);
+    res.json(data);
+});
+
+// --- 週間ページからの予約実行窓口 ---
+app.post('/api/reserve', async (req, res) => {
+    const { id, patient_name, part } = req.body;
+    const { data, error } = await supabase
+        .from('reservations')
+        .update({ patient_name, part, status: 'waiting' }) // 予約が入ったら自動で「待ち」にする
+        .eq('id', id);
+    if (error) return res.status(500).json(error);
+    res.json({ success: true });
+});
+
 app.listen(PORT, "0.0.0.0", () => { console.log("MRIシステム完全版 起動中"); });
