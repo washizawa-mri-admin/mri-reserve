@@ -44,18 +44,30 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+// --- 1. update 窓口：IDも保存できるように修正 ---
 app.post("/api/update", async (req, res) => {
-  const { id, status, doctor, patient_name } = req.body;
+  const { id, status, doctor, patient_name, patient_id } = req.body; // patient_id を追加
   let updateData = { doctor };
   if (status !== undefined) updateData.status = status;
   if (patient_name !== undefined) updateData.patient_name = patient_name;
+  if (patient_id !== undefined) updateData.patient_id = patient_id; // これが必要！
+  
   await supabase.from('slots').update(updateData).eq('id', id);
   res.json({ status: "ok" });
 });
 
+// --- 2. start 窓口：開始ボタン時もIDを保存するように修正 ---
 app.post("/api/start", async (req, res) => {
   const now = new Date().toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
-  await supabase.from('slots').update({ status: 'scanning', start_time: now, patient_name: req.body.patient_name || null }).eq('id', req.body.id);
+  const { id, patient_name, patient_id } = req.body; // patient_id を追加
+  
+  await supabase.from('slots').update({ 
+    status: 'scanning', 
+    start_time: now, 
+    patient_name: patient_name || null,
+    patient_id: patient_id || null // これが必要！
+  }).eq('id', id);
+  
   res.json({ status: "ok" });
 });
 
