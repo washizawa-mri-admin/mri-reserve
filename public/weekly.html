@@ -13,59 +13,78 @@
         th { background: #e9ecef; position: sticky; top: 0; }
         .time-col { width: 60px; background: #f8f9fa; font-weight: bold; }
         
-        .slot { cursor: pointer; height: 45px; vertical-align: top; transition: 0.2s; }
+        .slot { cursor: pointer; height: 55px; vertical-align: top; transition: 0.2s; overflow: hidden; }
         .slot:hover { background: #f1f3f5; }
         .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
-        .patient-info { font-weight: bold; font-size: 0.9em; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-        .part-info { color: #666; font-size: 0.8em; }
-        .empty { color: #ccc; font-size: 0.8em; }
+        .patient-info { font-weight: bold; font-size: 0.9em; display: block; color: #2e7d32; }
+        .id-info { font-size: 0.75em; color: #666; display: block; }
+        .part-info { background: #4caf50; color: white; font-size: 0.75em; padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px; }
+        .empty { color: #ccc; font-size: 0.8em; line-height: 45px; }
         
-        .controls { display: flex; justify-content: space-between; margin-bottom: 15px; }
-        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .btn-nav { padding: 8px 15px; cursor: pointer; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; }
+        .btn-home { text-decoration: none; background: #666; color: white; padding: 8px 15px; border-radius: 4px; font-size: 0.9em; }
         
         /* モーダル */
         #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
         .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; }
+        .input-group { margin-bottom: 10px; }
+        .input-group label { display: block; font-size: 0.8em; color: #666; margin-bottom: 2px; }
+        .input-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        
         .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
-        .btn-opt { padding: 10px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; }
-        .btn-opt.active { background: #007bff; color: white; }
+        .btn-opt { padding: 8px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+        .btn-opt.active { background: #28a745; color: white; border-color: #28a745; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>🗓 MRI 週間予約状況</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <a href="index.html" class="btn-home">← 当日一覧へ戻る</a>
+        <h2>🗓 MRI 週間予約状況</h2>
+        <div style="width: 100px;"></div> </div>
+
     <div class="controls">
-        <button onclick="changeWeek(-7)">◀ 前の週</button>
-        <span id="weekRange" style="font-weight:bold; font-size:1.1em;"></span>
-        <button onclick="changeWeek(7)">次の週 ▶</button>
+        <button class="btn-nav" onclick="changeWeek(-7)">◀ 前の週</button>
+        <span id="weekRange" style="font-weight:bold; font-size:1.1em; background: #eee; padding: 5px 15px; border-radius: 20px;"></span>
+        <button class="btn-nav" onclick="changeWeek(7)">次の週 ▶</button>
     </div>
 
     <table id="weeklyTable">
         <thead>
             <tr id="dateHeader">
                 <th class="time-col">時間</th>
-                </tr>
+            </tr>
         </thead>
-        <tbody id="tableBody">
-            </tbody>
+        <tbody id="tableBody"></tbody>
     </table>
 </div>
 
 <div id="modal">
     <div class="modal-content">
-        <h3 id="mTitle">予約登録</h3>
-        <input type="text" id="pName" placeholder="氏名(カタカナ)" style="width:100%; padding:10px; box-sizing:border-box; margin-bottom:10px;">
-        <p style="margin:5px 0">部位選択</p>
+        <h3 id="mTitle" style="margin-top:0; color:#2e7d32;">予約登録</h3>
+        
+        <div class="input-group">
+            <label>患者ID</label>
+            <input type="text" id="pId" placeholder="例: 12345">
+        </div>
+        
+        <div class="input-group">
+            <label>氏名</label>
+            <input type="text" id="pName" placeholder="氏名(カタカナ)">
+        </div>
+
+        <p style="margin:10px 0 5px 0; font-size:0.8em; color:#666;">部位選択</p>
         <div class="grid" id="partsGrid"></div>
-        <button onclick="save()" style="width:100%; padding:12px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1em; cursor:pointer;">登録確定</button>
+        
+        <button onclick="save()" style="width:100%; padding:15px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1.1em; font-weight:bold; cursor:pointer; margin-top:10px;">予約を確定する</button>
         <button onclick="closeModal()" style="width:100%; background:none; border:none; color:gray; margin-top:10px; cursor:pointer;">キャンセル</button>
     </div>
 </div>
 
 <script>
     let currentMonday = new Date();
-    // 今週の月曜日を計算
     const day = currentMonday.getDay() || 7;
     currentMonday.setDate(currentMonday.getDate() - day + 1);
 
@@ -78,7 +97,6 @@
         const body = document.getElementById("tableBody");
         const rangeText = document.getElementById("weekRange");
         
-        // ヘッダーのリセット
         header.innerHTML = '<th class="time-col">時間</th>';
         body.innerHTML = '';
         
@@ -92,9 +110,8 @@
             dates.push(dateStr);
             header.innerHTML += `<th>${d.getMonth()+1}/${d.getDate()}(${dayNames[i]})</th>`;
         }
-        rangeText.innerText = `${dates[0]} 〜 ${dates[5]}`;
+        rangeText.innerText = `${dates[0].replace(/-/g,'/')} 〜 ${dates[5].replace(/-/g,'/')}`;
 
-        // 全枠のデータを取得
         Promise.all(dates.map(d => fetch(`/api/slots?date=${d}`).then(res => res.json())))
         .then(weekData => {
             times.forEach(t => {
@@ -102,12 +119,14 @@
                 dates.forEach((dateStr, colIndex) => {
                     const slot = weekData[colIndex].find(s => s.time === t);
                     if (slot) {
-                        const isBooked = slot.patient_name;
-                        row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${slot.patient_name || ''}')">
-                                    ${isBooked ? `<span class="patient-info">${slot.patient_name}</span><span class="part-info">${slot.part || ''}</span>` : '<span class="empty">空き</span>'}
+                        const name = slot.patient_name || "";
+                        const part = slot.part || "";
+                        const pid = slot.patient_id || "";
+                        row += `<td class="slot ${name ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${pid}', '${part}')">
+                                    ${name ? `<span class="id-info">${pid}</span><span class="patient-info">${name}</span><span class="part-info">${part}</span>` : '<span class="empty">空き</span>'}
                                 </td>`;
                     } else {
-                        row += `<td style="background:#f0f0f0;">-</td>`; // 枠なし（日祝など）
+                        row += `<td style="background:#f0f0f0;">-</td>`;
                     }
                 });
                 row += '</tr>';
@@ -121,27 +140,48 @@
         loadWeek();
     }
 
-    function openModal(id, time, name) {
-        curId = id; curP = "";
-        document.getElementById('mTitle').innerText = time + " 予約";
+    function openModal(id, time, name, pid, part) {
+        curId = id; 
+        curP = part; // 既存の部位をセット
+        document.getElementById('mTitle').innerText = time + " 予約登録";
+        document.getElementById('pId').value = pid;
         document.getElementById('pName').value = name;
-        document.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
+        
+        // 部位ボタンの選択状態をリセット
+        document.querySelectorAll('.btn-opt').forEach(b => {
+            b.classList.remove('active');
+            if(b.innerText === part) b.classList.add('active');
+        });
+        
         document.getElementById('modal').style.display = 'flex';
     }
 
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
-    function save() {
-    let name = document.getElementById('pName').value;
-    // 名前が空なら「予約済」という文字を自動で入れる
-    if (!name) name = "予約済"; 
+    async function save() {
+        const name = document.getElementById('pName').value;
+        const pid = document.getElementById('pId').value;
+        
+        if (!name && !pid) return alert("IDまたは氏名を入力してください");
 
-    fetch("/api/reserve", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({id: curId, patient_name: name, part: curP})
-    }).then(() => { closeModal(); loadWeek(); });
-}
+        const res = await fetch("/api/reserve", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+                id: curId, 
+                patient_name: name || "予約済", 
+                patient_id: pid,
+                part: curP
+            })
+        });
+
+        if(res.ok) {
+            closeModal();
+            loadWeek();
+        } else {
+            alert("保存に失敗しました。");
+        }
+    }
 
     // 部位ボタン生成
     const pGrid = document.getElementById("partsGrid");
