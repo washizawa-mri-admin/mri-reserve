@@ -11,7 +11,7 @@ app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI 
 app.use(express.json());
 app.use(express.static("public"));
 
-// --- 予約枠生成 ---
+// --- 予約枠生成（slotsテーブルを使用） ---
 async function ensureSlotsExist(date) {
   const { data: existing } = await supabase.from('slots').select('id').eq('date', date).limit(1);
   if (existing && existing.length > 0) return;
@@ -26,7 +26,7 @@ async function ensureSlotsExist(date) {
   await supabase.from('slots').insert(inserts);
 }
 
-// --- API ---
+// --- メイン：予約枠取得 ---
 app.get("/api/slots", async (req, res) => {
   const date = req.query.date;
   await ensureSlotsExist(date);
@@ -34,6 +34,7 @@ app.get("/api/slots", async (req, res) => {
   res.json(data || []);
 });
 
+// --- 枠の追加 ---
 app.post("/api/add", async (req, res) => {
   const { date } = req.body;
   const { data: latest } = await supabase.from('slots').select('time').eq('date', date).order('time', { ascending: false }).limit(1);
@@ -44,28 +45,28 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// --- 1. update 窓口：IDも保存できるように修正 ---
+// --- 保存・更新（IDと名前を両方保存） ---
 app.post("/api/update", async (req, res) => {
-  const { id, status, doctor, patient_name, patient_id } = req.body; // patient_id を追加
+  const { id, status, doctor, patient_name, patient_id } = req.body;
   let updateData = { doctor };
   if (status !== undefined) updateData.status = status;
   if (patient_name !== undefined) updateData.patient_name = patient_name;
-  if (patient_id !== undefined) updateData.patient_id = patient_id; // これが必要！
+  if (patient_id !== undefined) updateData.patient_id = patient_id;
   
   await supabase.from('slots').update(updateData).eq('id', id);
   res.json({ status: "ok" });
 });
 
-// --- 2. start 窓口：開始ボタン時もIDを保存するように修正 ---
+// --- 撮影開始 ---
 app.post("/api/start", async (req, res) => {
   const now = new Date().toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
-  const { id, patient_name, patient_id } = req.body; // patient_id を追加
+  const { id, patient_name, patient_id } = req.body;
   
   await supabase.from('slots').update({ 
     status: 'scanning', 
     start_time: now, 
     patient_name: patient_name || null,
-    patient_id: patient_id || null // これが必要！
+    patient_id: patient_id || null
   }).eq('id', id);
   
   res.json({ status: "ok" });
@@ -75,11 +76,10 @@ app.post("/api/finish", async (req, res) => { await supabase.from('slots').updat
 app.post("/api/remote", async (req, res) => { await supabase.from('slots').update({ is_remote: 1, patient_id: req.body.patient_id, patient_name: req.body.patient_name, status: 'waiting' }).eq('id', req.body.id); res.json({ status: "ok" }); });
 app.post("/api/delete", async (req, res) => { await supabase.from('slots').delete().eq('id', req.body.id); res.json({ status: "ok" }); });
 
-// --- レポート用（過去データ対応版） ---
+// --- レポート用 ---
 app.get("/api/report/all", async (req, res) => {
     const { data } = await supabase.from('slots').select('*').eq('status', 'done');
     const formatted = (data || []).map(r => {
-        // is_extraが1より大きければその数字を、そうでなければ1としてカウント
         const actualCount = (r.is_extra > 1) ? r.is_extra : 1;
         return { 
             date: r.date, 
@@ -91,29 +91,38 @@ app.get("/api/report/all", async (req, res) => {
     res.json(formatted);
 });
 
-const PORT = process.env.PORT || 3000;
-
-// --- 週間ページ用のデータ取得窓口 ---
-app.get('/api/slots', async (req, res) => {
-    const { date } = req.query;
-    const { data, error } = await supabase
-        .from('reservations')
-        .select('*')
-        .eq('date', date)
-        .order('time', { ascending: true });
-    if (error) return res.status(500).json(error);
-    res.json(data);
-});
-
-// --- 週間ページからの予約実行窓口 ---
+// --- 週間予約ページからの予約実行 ---
 app.post('/api/reserve', async (req, res) => {
-    const { id, patient_name, part } = req.body;
+    const { id, patient_name, part, patient_id } = req.body;
     const { data, error } = await supabase
-        .from('reservations')
-        .update({ patient_name, part, status: 'waiting' }) // 予約が入ったら自動で「待ち」にする
+        .from('slots') // ★ 'reservations' から 'slots' に変更
+        .update({ 
+            patient_name, 
+            part, 
+            patient_id: patient_id || "", // IDも保存
+            status: 'waiting' 
+        })
         .eq('id', id);
     if (error) return res.status(500).json(error);
     res.json({ success: true });
 });
+
+// --- ID履歴検索API ---
+app.get('/api/search', async (req, res) => {
+    const { id } = req.query;
+    const { data, error } = await supabase
+        .from('slots')
+        .select('*')
+        .eq('patient_id', id)
+        .order('date', { ascending: false });
+
+    if (error) {
+        console.error("検索エラー:", error);
+        return res.status(500).json(error);
+    }
+    res.json(data);
+});
+
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => { console.log("MRIシステム完全版 起動中"); });
