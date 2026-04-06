@@ -26,22 +26,25 @@
     </style>
 </head>
 <body>
-
-           <div style="margin: 20px 0; text-align: center;">
-    <a href="weekly.html" style="display: inline-block; background: #4caf50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-        📅 週間予約表を表示する
-    </a>
-</div>
-         
-<div class="card">
-    <div class="header">
-        <h1>MRI 予約管理</h1>
-        <div>
-            <a href="print.html" style="text-decoration:none; background:#4caf50; color:white; padding:8px 15px; border-radius:6px; margin-right:10px;">🖨️ 印刷用一覧</a>
-            <input type="date" id="datePicker" style="padding:8px;">
-            <a href="report.html" style="margin-left:10px; text-decoration:none; background:#607d8b; color:white; padding:8px 15px; border-radius:6px;">📊 レポート</a>
-        </div>
+    <div style="margin: 20px 0; text-align: center;">
+        <a href="weekly.html" style="display: inline-block; background: #4caf50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+            📅 週間予約表を表示する
+        </a>
     </div>
+
+    <div class="card">
+        <div class="header">
+            <h1>MRI 予約管理</h1>
+            <div style="display: flex; align-items: center;">
+                <a href="search.html" style="text-decoration:none; background:#444; color:white; padding:8px 15px; border-radius:6px; margin-right:10px; font-size: 0.9em;">🔍 履歴検索</a>
+                
+                <a href="print.html" style="text-decoration:none; background:#2196f3; color:white; padding:8px 15px; border-radius:6px; margin-right:10px; font-size: 0.9em;">🖨️ 印刷</a>
+                
+                <input type="date" id="datePicker" style="padding:7px; border:1px solid #ccc; border-radius:6px;">
+                
+                <a href="report.html" style="margin-left:10px; text-decoration:none; background:#607d8b; color:white; padding:8px 15px; border-radius:6px; font-size: 0.9em;">📊 レポート</a>
+            </div>
+        </div>
     <div class="summary-panel">
         <div class="summary-item" style="background: var(--waiting);">待ち <span id="count-waiting" class="count">0</span></div>
         <div class="summary-item" style="background: var(--scanning);">撮影中 <span id="count-scanning" class="count">0</span></div>
