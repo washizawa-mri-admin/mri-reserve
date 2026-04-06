@@ -57,8 +57,10 @@ document.getElementById("datePicker").value = today;
 
 function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
-        const list = document.getElementById("list"); list.innerHTML = "";
+        const list = document.getElementById("list"); 
+        list.innerHTML = "";
         let counts = { waiting: 0, scanning: 0, done: 0 };
+
         data.forEach(item => {
             const status = item.status || '';
             if (counts.hasOwnProperty(status)) counts[status]++;
@@ -66,46 +68,38 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-           const nameValue = item.patient_name || ""; 
-const partValue = item.part ? ` [${item.part}]` : "";
+            // 名前・IDの入力欄（Enterで即保存）
+            const nameValue = item.patient_name || "";
+            const partValue = item.part ? ` [${item.part}]` : "";
+            const nameArea = `
+                <input type="text" value="${nameValue}" placeholder="名前・ID" id="name-${item.id}" 
+                       onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')"
+                       style="padding:5px; width:160px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
+            `;
 
-// 名前とIDを常時入力可能にし、Enterで即保存する設定
-const nameValue = item.patient_name || "";
-const partValue = item.part ? ` [${item.part}]` : "";
-
-const nameArea = `
-    <input type="text" 
-           value="${nameValue}" 
-           placeholder="名前・ID" 
-           id="name-${item.id}" 
-           onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')"
-           style="padding:5px; width:160px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-    <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
-`;
-
-div.innerHTML = `
-    <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
-    <div class="actions">
-        ${nameArea}
-        Dr: <select onchange="update(${item.id}, null, this.value)" style="padding:4px; margin-right:5px;">
-            <option value="">--</option>
-            ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
-        </select>
-        <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
-        <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
-        <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
-        <button onclick="requestRemote(${item.id})" style="background:#e91e63;color:white">読影</button>
-        <button class="btn-add" onclick="addSlot()">＋</button>
-        <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
-    </div>`;
+            div.innerHTML = `
+                <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
+                <div class="actions">
+                    ${nameArea}
+                    Dr: <select onchange="update(${item.id}, null, this.value)">
+                        <option value="">--</option>
+                        ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
+                    </select>
+                    <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
+                    <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
+                    <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
+                    <button onclick="requestRemote(${item.id})" style="background:#e91e63;color:white">読影</button>
+                    <button class="btn-add" onclick="addSlot()">＋</button>
+                    <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
+                </div>`;
             list.appendChild(div);
         });
+
         document.getElementById("count-waiting").innerText = counts.waiting;
         document.getElementById("count-scanning").innerText = counts.scanning;
         document.getElementById("count-done").innerText = counts.done;
-    }).catch(err => {
-        console.error("データ読み込みエラー:", err);
-    });
+    }).catch(err => console.error("読み込みエラー:", err));
 }
 
 function update(id, status, doctor) {
@@ -125,7 +119,8 @@ function startWithOption(id) {
 }
 
 function finishScan(id) { 
-    fetch("/api/finish", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id}) }).then(load); 
+    const name = document.getElementById(`name-${id}`)?.value || "受診済";
+    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status: 'done', patient_name: name}) }).then(load); 
 }
 
 function requestRemote(id) {
@@ -139,11 +134,7 @@ function deleteSlot(id) {
 }
 
 function addSlot() {
-    fetch("/api/add", { 
-        method: "POST", 
-        headers: {"Content-Type":"application/json"}, 
-        body: JSON.stringify({ date: today }) 
-    }).then(load);
+    fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(load);
 }
 
 document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
