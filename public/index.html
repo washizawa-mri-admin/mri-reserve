@@ -82,6 +82,12 @@ function load() {
                 <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
             `;
 
+            <div style="display: inline-block; margin-left: 10px; padding: 5px; background: #eee; border-radius: 6px; border: 1px solid #ccc;">
+    <input type="text" id="searchId" placeholder="ID検索" style="padding: 6px; width: 70px; border: 1px solid #bbb; border-radius: 4px;">
+    <button onclick="searchPatient()" style="background: #444; color: white; padding: 6px 12px; margin: 0; border-radius: 4px; font-weight: bold;">履歴
+            </button>
+</div>
+
             div.innerHTML = `
                 <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                 <div class="actions">
