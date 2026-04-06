@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>患者予約履歴検索</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
+        .card { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { border-bottom: 2px solid #444; padding-bottom: 10px; font-size: 1.5em; }
+        .search-box { margin-bottom: 20px; display: flex; gap: 10px; }
+        input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1.1em; }
+        button { padding: 10px 20px; background: #444; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        .history-item { background: #fff; border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 8px; }
+        .date { font-weight: bold; color: #2196f3; font-size: 1.1em; }
+        .back-link { display: inline-block; margin-top: 20px; color: #666; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔍 患者予約履歴検索</h1>
+        <div class="search-box">
+            <input type="text" id="idInput" placeholder="患者IDを入力してください" onkeydown="if(event.key==='Enter') doSearch()">
+            <button onclick="doSearch()">検索</button>
+        </div>
+        <div id="resultList"></div>
+        <a href="index.html" class="back-link">← 当日予約一覧に戻る</a>
+    </div>
+
+    <script>
+        async function doSearch() {
+            const id = document.getElementById("idInput").value;
+            if (!id) return;
+            
+            const res = await fetch(`/api/search?id=${id}`);
+            const data = await res.json();
+            const list = document.getElementById("resultList");
+            list.innerHTML = "";
+
+            if (data.length === 0) {
+                list.innerHTML = "<p>該当する履歴はありません。</p>";
+                return;
+            }
+
+            data.forEach(h => {
+                const div = document.createElement("div");
+                div.className = "history-item";
+                div.innerHTML = `
+                    <div class="date">${h.date} ${h.time}</div>
+                    <div><strong>部位:</strong> ${h.part || '未設定'}</div>
+                    <div><strong>担当Dr:</strong> ${h.doctor || '--'}</div>
+                    <div style="color:#888; font-size:0.9em;">ステータス: ${h.status === 'done' ? '✅終了' : '🕒予約中'}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>
