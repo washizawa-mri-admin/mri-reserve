@@ -68,13 +68,17 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-            // 名前・IDの入力欄（Enterで即保存）
+            // IDと名前を分けた入力欄
+            const idValue = item.patient_id || "";
             const nameValue = item.patient_name || "";
             const partValue = item.part ? ` [${item.part}]` : "";
+            
             const nameArea = `
-                <input type="text" value="${nameValue}" placeholder="名前・ID" id="name-${item.id}" 
+                <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" 
+                       style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" 
                        onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')"
-                       style="padding:5px; width:160px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                       style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                 <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
             `;
 
@@ -108,19 +112,35 @@ function update(id, status, doctor) {
     fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(load); 
 }
 
+// IDも一緒に保存するように強化！
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`)?.value;
-    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status, patient_name: name}) }).then(load);
+    const pid = document.getElementById(`id-${id}`)?.value;
+    fetch("/api/update", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({id, status, patient_name: name, patient_id: pid}) 
+    }).then(load);
 }
 
 function startWithOption(id) {
     const name = document.getElementById(`name-${id}`)?.value;
-    fetch("/api/start", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, patient_name: name}) }).then(load);
+    const pid = document.getElementById(`id-${id}`)?.value;
+    fetch("/api/start", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({id, patient_name: name, patient_id: pid}) 
+    }).then(load);
 }
 
 function finishScan(id) { 
     const name = document.getElementById(`name-${id}`)?.value || "受診済";
-    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status: 'done', patient_name: name}) }).then(load); 
+    const pid = document.getElementById(`id-${id}`)?.value || "";
+    fetch("/api/update", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid}) 
+    }).then(load); 
 }
 
 function requestRemote(id) {
