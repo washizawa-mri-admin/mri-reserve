@@ -69,25 +69,35 @@ function load() {
            const nameValue = item.patient_name || ""; 
 const partValue = item.part ? ` [${item.part}]` : "";
 
+// 名前とIDを常時入力可能にし、Enterで即保存する設定
+const nameValue = item.patient_name || "";
+const partValue = item.part ? ` [${item.part}]` : "";
+
 const nameArea = `
-    <input type="text" value="${nameValue}" placeholder="患者名" id="name-${item.id}" style="padding:5px; width:150px; margin-right:10px;">
-    <span style="font-size:0.8em; color:#666;">${partValue}</span>
+    <input type="text" 
+           value="${nameValue}" 
+           placeholder="名前・ID" 
+           id="name-${item.id}" 
+           onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')"
+           style="padding:5px; width:160px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+    <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
 `;
-            div.innerHTML = `
-                <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
-                <div class="actions">
-                    ${nameArea}
-                    Dr: <select onchange="update(${item.id}, null, this.value)">
-                        <option value="">--</option>
-                        ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
-                    </select>
-                    <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
-                    <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
-                    <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
-                    <button onclick="requestRemote(${item.id})" style="background:#e91e63;color:white">読影</button>
-                    <button class="btn-add" onclick="addSlot()">＋枠</button>
-                    <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
-                </div>`;
+
+div.innerHTML = `
+    <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
+    <div class="actions">
+        ${nameArea}
+        Dr: <select onchange="update(${item.id}, null, this.value)" style="padding:4px; margin-right:5px;">
+            <option value="">--</option>
+            ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
+        </select>
+        <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
+        <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
+        <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
+        <button onclick="requestRemote(${item.id})" style="background:#e91e63;color:white">読影</button>
+        <button class="btn-add" onclick="addSlot()">＋</button>
+        <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
+    </div>`;
             list.appendChild(div);
         });
         document.getElementById("count-waiting").innerText = counts.waiting;
