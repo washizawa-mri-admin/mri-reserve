@@ -65,11 +65,12 @@
     <div id="part-panel">
         <h3 style="margin-top:0;">部位選択</h3>
         <div class="side-grid">
-            <button class="btn-select" id="side-left" onclick="toggleSide('左')">左</button>
-            <button class="btn-select" id="side-right" onclick="toggleSide('右')">右</button>
-            <button class="btn-select" id="side-none" onclick="toggleSide('')">なし</button>
+            <button class="btn-select side-btn" id="side-left" onclick="toggleSide('左')">左</button>
+            <button class="btn-select side-btn" id="side-right" onclick="toggleSide('右')">右</button>
+            <button class="btn-select side-btn active" id="side-none" onclick="toggleSide('')">なし</button>
         </div>
-        <div class="part-grid" id="part-buttons"></div>
+        <div class="part-grid" id="part-buttons">
+            </div>
         <button onclick="closePartPanel()" style="width:100%; background:#444; color:white; margin-top:15px; border-radius: 4px; padding: 10px;">キャンセル</button>
     </div>
 
@@ -80,6 +81,15 @@ let currentEditId = null;
 let currentSide = "";
 let today = new Date().toISOString().split("T")[0];
 document.getElementById("datePicker").value = today;
+
+// 部位パネルの中身を一度だけ生成
+function initPartButtons() {
+    const container = document.getElementById('part-buttons');
+    container.innerHTML = partsList.map(p => `
+        <button class="btn-select" onclick="applyPart('${p}')">${p}</button>
+    `).join("");
+}
+initPartButtons();
 
 function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
@@ -97,26 +107,21 @@ function load() {
             div.innerHTML = `
                 <div class="time">${item.time === 'EXTRA' ? '追加枠' : item.time}</div>
                 <div class="actions">
-                    <input type="text" value="${item.patient_id || ''}" id="id-${item.id}" placeholder="ID" style="width:60px; padding:5px; border:1px solid #ccc; border-radius:4px;">
-                    <input type="text" value="${item.patient_name || ''}" id="name-${item.id}" placeholder="名前" style="width:120px; padding:5px; border:1px solid #ccc; border-radius:4px;">
-                    
+                    <input type="text" value="${item.patient_id || ''}" id="id-${item.id}" placeholder="ID" style="width:60px; padding:5px;">
+                    <input type="text" value="${item.patient_name || ''}" id="name-${item.id}" placeholder="名前" style="width:120px; padding:5px;">
                     <span class="part-text">${item.part ? '【'+item.part+'】' : ''}</span>
-                    
-                    <button class="btn-part-trigger" onclick="openPartPanel(${item.id})">部位選択</button>
-
-                    Dr: <select onchange="update(${item.id}, null, this.value)" style="padding:5px; border-radius:4px;">
+                    <button class="btn-part-trigger" onclick="openPartPanel(${item.id})">部位</button>
+                    Dr: <select onchange="update(${item.id}, null, this.value)">
                         <option value="">--</option>
                         ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
                     </select>
                     <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
-                    <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
                     <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
                     <button class="btn-add" onclick="addSlot()">＋</button>
-                    <button class="btn-del" onclick="deleteSlot(${item.id})" style="background:#ddd">削</button>
+                    <button class="btn-del" onclick="deleteSlot(${item.id})">削</button>
                 </div>`;
             list.appendChild(div);
         });
-
         document.getElementById("count-waiting").innerText = counts.waiting;
         document.getElementById("count-scanning").innerText = counts.scanning;
         document.getElementById("count-done").innerText = counts.done;
@@ -125,71 +130,67 @@ function load() {
 
 function openPartPanel(id) {
     currentEditId = id;
-    currentSide = ""; 
+    toggleSide(''); // パネルを開くたびに「なし」にリセット
     document.getElementById('overlay').style.display = 'block';
     document.getElementById('part-panel').style.display = 'block';
-    
-    const container = document.getElementById('part-buttons');
-    container.innerHTML = partsList.map(p => `
-        <button class="btn-select" onclick="applyPart('${p}')">${p}</button>
-    `).join("");
-    toggleSide(''); // 「なし」をデフォルト選択
 }
 
 function toggleSide(side) {
     currentSide = side;
-    document.querySelectorAll('.side-grid .btn-select').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
     if(side === '左') document.getElementById('side-left').classList.add('active');
     else if(side === '右') document.getElementById('side-right').classList.add('active');
     else document.getElementById('side-none').classList.add('active');
 }
 
 function applyPart(partName) {
-    const fullPart = currentSide ? `${currentSide}${partName}` : partName;
-    const name = document.getElementById(`name-${currentEditId}`).value;
-    const pid = document.getElementById(`id-${currentEditId}`).value;
+    if (!currentEditId) return;
+    
+    const fullPart = currentSide ? currentSide + partName : partName;
+    const nameInput = document.getElementById(`name-${currentEditId}`);
+    const idInput = document.getElementById(`id-${currentEditId}`);
+    
+    const name = nameInput ? nameInput.value : "";
+    const pid = idInput ? idInput.value : "";
 
     fetch("/api/update", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ id: currentEditId, part: fullPart, patient_name: name, patient_id: pid })
+        body: JSON.stringify({ 
+            id: currentEditId, 
+            part: fullPart, 
+            patient_name: name, 
+            patient_id: pid 
+        })
     }).then(() => {
         closePartPanel();
         load();
-    });
+    }).catch(err => alert("保存に失敗しました"));
 }
 
 function closePartPanel() {
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('part-panel').style.display = 'none';
+    currentEditId = null;
 }
 
+// 共通のアップデート用
 function update(id, status, doctor) {
     fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, doctor, status}) }).then(load); 
 }
-
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`).value;
     const pid = document.getElementById(`id-${id}`).value;
     fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status, patient_name: name, patient_id: pid}) }).then(load);
 }
-
-function startWithOption(id) {
-    const name = document.getElementById(`name-${id}`).value;
-    const pid = document.getElementById(`id-${id}`).value;
-    fetch("/api/start", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, patient_name: name, patient_id: pid}) }).then(load);
-}
-
 function finishScan(id) { 
     const name = document.getElementById(`name-${id}`).value || "受診済";
     const pid = document.getElementById(`id-${id}`).value || "";
     fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid}) }).then(load); 
 }
-
 function addSlot() {
     fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today, time: "EXTRA" }) }).then(load);
 }
-
 function deleteSlot(id) { 
     if(confirm("削除しますか？")) fetch("/api/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id}) }).then(load); 
 }
