@@ -8,25 +8,22 @@
         body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         
-        /* ヘッダー */
         th { border: 1px solid #000; background: #eee; height: 30px; font-size: 11px; }
-        .time-col { width: 45px; font-weight: bold; }
+        .time-col { width: 50px; font-weight: bold; }
         
-        /* セル設定 */
-        td { border: 1px solid #000; padding: 2px; text-align: center; height: 28px; vertical-align: middle; word-break: break-all; }
+        td { border: 1px solid #000; padding: 2px; text-align: center; height: 30px; vertical-align: middle; word-break: break-all; }
         
-        /* 【修正】名前を広く、部位を狭く（名前の約1/2〜1/3程度に設定） */
-        .name-cell { border-right: 0.5px dotted #666; font-weight: bold; font-size: 10.5px; width: 11%; }
-        .part-cell { font-size: 9px; color: #333; width: 5%; }
+        /* 名前セル：太字 */
+        .name-cell { font-weight: bold; font-size: 10.5px; text-align: left; padding-left: 4px; }
+        /* 部位セル：少し小さめ */
+        .part-cell { font-size: 9px; color: #333; }
 
-        /* 撮影済み（ピンク） */
         .done-past { 
             background-color: #ffcccc !important; 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
         }
 
-        /* 合計行 */
         .total-row { background-color: #f8f9fa; font-weight: bold; height: 30px; }
         .total-label { text-align: right; padding-right: 10px; }
 
@@ -46,7 +43,7 @@
         <thead>
             <tr id="headerRow">
                 <th class="time-col" rowspan="2">時間</th>
-                </tr>
+            </tr>
             <tr id="subHeaderRow">
                 </tr>
         </thead>
@@ -84,8 +81,8 @@
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
                 hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                // 【修正】サブヘッダーの幅を明示的に指定
-                shRow.innerHTML += `<th class="name-cell">氏名</th><th class="part-cell">部位</th>`;
+                // 【重要】ここで幅の比率を「2:1」くらいに強制指定
+                shRow.innerHTML += `<th style="width:10%;">氏名</th><th style="width:5%;">部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
