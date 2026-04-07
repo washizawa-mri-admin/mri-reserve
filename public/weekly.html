@@ -1,34 +1,58 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+   <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>MRI週間予約状況</title>
     <style>
+        /* 基本設定 */
         body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; }
         .container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
-        h2 { text-align: center; color: #333; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 800px; }
+        
+        /* テーブル設定（スマホでも崩れないように） */
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 700px; }
         th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 0.85em; }
-        th { background: #e9ecef; position: sticky; top: 0; }
-        .time-col { width: 60px; background: #f8f9fa; font-weight: bold; }
-        .slot { cursor: pointer; height: 55px; vertical-align: top; transition: 0.2s; overflow: hidden; }
-        .slot:hover { background: #f1f3f5; }
-        .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        
+        .slot { cursor: pointer; height: 65px; vertical-align: top; }
         .patient-info { font-weight: bold; font-size: 0.9em; display: block; color: #2e7d32; }
-        .id-info { font-size: 0.75em; color: #666; display: block; }
-        .part-info { background: #4caf50; color: white; font-size: 0.75em; padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px; }
-        .empty { color: #ccc; font-size: 0.8em; line-height: 45px; }
-        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .btn-nav { padding: 8px 15px; cursor: pointer; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; }
-        .btn-home { text-decoration: none; background: #666; color: white; padding: 8px 15px; border-radius: 4px; font-size: 0.9em; }
-        #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
-        .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; }
-        .input-group { margin-bottom: 10px; }
-        .input-group label { display: block; font-size: 0.8em; color: #666; margin-bottom: 2px; }
-        .input-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
-        .btn-opt { padding: 8px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
-        .btn-opt.active, .side-btn.active { background: #28a745; color: white; border-color: #28a745; }
+        .part-info { background: #4caf50; color: white; font-size: 0.7em; padding: 1px 4px; border-radius: 3px; display: inline-block; }
+
+        /* ボタンとグリッド */
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+        .btn-opt { padding: 12px 5px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 6px; cursor: pointer; font-size: 0.9em; transition: 0.2s; }
+        .btn-opt.active, .side-btn.active { background: #28a745 !important; color: white !important; border-color: #28a745; }
+
+        /* --- 2. スマホ専用の見た目調整（メディアクエリ） --- */
+        @media (max-width: 600px) {
+            body { padding: 0; }
+            .container { padding: 8px; border-radius: 0; }
+            
+            /* ヘッダー周りをスッキリさせる */
+            h2 { font-size: 1.1em; margin: 5px 0; }
+            .btn-home { font-size: 0.8em; padding: 5px 10px; }
+            
+            /* 週の切り替えボタンを押しやすく */
+            .btn-nav { padding: 12px; flex: 1; margin: 0 5px; }
+            #weekRange { font-size: 0.9em; padding: 5px 10px; }
+
+            /* モーダルを画面いっぱいに */
+            .modal-content {
+                width: 95% !important;
+                padding: 15px !important;
+                box-sizing: border-box;}
+
+            /* 部位ボタンを2列にして押しやすくする */
+            #partsGrid {
+                grid-template-columns: repeat(2, 1fr);}
+            
+            /* 患者情報の文字サイズ微調整 */
+            .patient-info { font-size: 0.8em; }
+            .id-info { font-size: 0.7em; }}
+
+        /* モーダルの基本スタイル */
+        #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:1000; }
+        .modal-content { background:white; padding:20px; border-radius:12px; width:400px; shadow: 0 4px 15px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
