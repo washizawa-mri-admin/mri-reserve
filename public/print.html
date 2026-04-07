@@ -7,10 +7,11 @@
         @page { size: A4 landscape; margin: 10mm; }
         body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 10px; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 25px; }
-        th { background: #eee; height: 30px; }
+        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 28px; }
+        th { background: #eee; height: 32px; }
         .time-col { font-weight: bold; width: 60px; }
         
+        /* 撮影済み（ピンク） */
         .done-past { 
             background-color: #ffcccc !important; 
             -webkit-print-color-adjust: exact; 
@@ -76,12 +77,7 @@
             }
 
             let dailyCounts = [0, 0, 0, 0, 0, 0];
-
-            // 【ここが重要】表示したい時間を全て固定で定義する
-            const allTimes = [
-                "09:00","09:30","10:00","10:30","11:00","11:30","12:00",
-                "14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"
-            ];
+            const allTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
             
             allTimes.forEach(time => {
                 let row = `<tr><td class="time-col">${time}</td>`;
@@ -90,12 +86,15 @@
                     let cellClass = '';
                     let content = '';
 
-                    if (slot && slot.patient_name) {
-                        content = `${slot.patient_name}<br><small>${slot.part || ''}</small>`;
-                        dailyCounts[i]++;
-                        // ステータスが完了(done)ならピンク
-                        if (slot.status === 'done' || slot.status === '完了') {
-                            cellClass = 'class="done-past"';
+                    if (slot) {
+                        // 【修正】名前がある、またはステータスが done の場合に表示・カウント
+                        const isDone = (slot.status === 'done' || slot.status === '完了');
+                        const hasName = !!slot.patient_name;
+
+                        if (hasName || isDone) {
+                            content = `${slot.patient_name || ''}<br><small>${slot.part || ''}</small>`;
+                            dailyCounts[i]++;
+                            if (isDone) cellClass = 'class="done-past"';
                         }
                     }
                     row += `<td ${cellClass}>${content}</td>`;
@@ -104,7 +103,7 @@
             });
 
             dailyCounts.forEach(count => {
-                tRow.innerHTML += `<td>${count > 0 ? count + ' 件' : '0 件'}</td>`;
+                tRow.innerHTML += `<td>${count} 件</td>`;
             });
         }
 
