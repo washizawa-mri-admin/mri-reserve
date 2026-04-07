@@ -58,6 +58,11 @@
         <div class="input-group"><label>患者ID</label><input type="text" id="pId"></div>
         <div class="input-group"><label>氏名</label><input type="text" id="pName"></div>
         <p style="margin:10px 0 5px 0; font-size:0.8em; color:#666;">部位選択</p>
+        <div class="grid" style="margin-bottom: 5px;">
+    <div class="btn-opt side-btn" id="side-L" onclick="setSide('左')">左</div>
+    <div class="btn-opt side-btn" id="side-R" onclick="setSide('右')">右</div>
+    <div class="btn-opt side-btn" id="side-N" onclick="setSide('')">なし</div>
+</div>
         <div class="grid" id="partsGrid"></div>
         <button onclick="save()" style="width:100%; padding:15px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1.1em; font-weight:bold; cursor:pointer; margin-top:10px;">確定・更新</button>
         <button onclick="deleteReservation()" style="width:100%; padding:10px; background:#dc3545; color:white; border:none; border-radius:4px; font-size:0.9em; font-weight:bold; cursor:pointer; margin-top:10px;">予約を消去</button>
