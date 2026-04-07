@@ -4,166 +4,118 @@
     <meta charset="UTF-8">
     <title>MRI予約管理</title>
     <style>
-        /* --- 既存のスタイルを維持 --- */
-        :root { --waiting: #fff4e5; --scanning: #e3f2fd; --done: #e8f5e9; --remote: #fce4ec; }
+        :root { --waiting: #fff4e5; --scanning: #e3f2fd; --done: #e8f5e9; }
         body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
-        .card { max-width: 1050px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 15px; padding-bottom: 15px; }
-        .summary-panel { display: flex; gap: 10px; margin-bottom: 20px; }
-        .summary-item { flex: 1; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
-        .count { display: block; font-size: 1.8em; }
+        .card { max-width: 1050px; margin: auto; background: white; padding: 20px; border-radius: 12px; }
         .slot { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 8px; background: white; }
         .status-waiting { background: var(--waiting) !important; border-left: 8px solid #ffa726 !important; }
-        .status-scanning { background: var(--scanning) !important; border-left: 8px solid #2196f3 !important; }
-        .status-done { background: var(--done) !important; border-left: 8px solid #4caf50 !important; opacity: 0.8; }
-        .time { width: 100px; font-weight: bold; }
+        .status-done { background: var(--done) !important; border-left: 8px solid #4caf50 !important; }
         .actions { flex-grow: 1; text-align: right; }
+        input { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 12px; margin-left: 4px; border-radius: 4px; border: none; cursor: pointer; }
         
-        button { padding: 6px 10px; margin-left: 4px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9em; }
-        .btn-part-trigger { background: #607d8b; color: white; font-weight: bold; }
-        .part-text { font-weight: bold; color: #d32f2f; margin: 0 10px; font-size: 0.9em; }
-
-        /* 部位選択パネルのスタイル */
+        /* 部位選択パネル：絶対に最前面にくるように設定 */
         #part-panel {
             display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: white; border: 2px solid #333; padding: 20px; z-index: 10001;
-            border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); width: 320px;
+            background: white; border: 3px solid #333; padding: 25px; z-index: 99999;
+            border-radius: 15px; box-shadow: 0 0 50px rgba(0,0,0,0.8); width: 350px;
         }
-        .panel-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 10000; }
-        .part-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-        .side-grid { display: flex; gap: 10px; margin-bottom: 15px; justify-content: center; }
-        .btn-select { background: #eee; border: 1px solid #ccc; padding: 10px; font-size: 1em; border-radius: 4px; }
-        .btn-select.active { background: #2196f3 !important; color: white !important; }
+        .panel-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 99998; }
+        
+        .part-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .btn-select { background: #f8f9fa; border: 2px solid #ddd; padding: 12px; font-size: 1.1em; border-radius: 6px; }
+        .btn-select:active { background: #e0e0e0; }
+        .btn-select.active-side { background: #2196f3 !important; color: white !important; border-color: #0d47a1; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <div class="header">
-            <h1>MRI 予約管理</h1>
-            <div>
-                <a href="print.html" style="text-decoration:none; background:#2196f3; color:white; padding:8px 15px; border-radius:6px; font-size: 0.9em;">🖨️ 印刷</a>
-                <input type="date" id="datePicker" style="padding:7px; border:1px solid #ccc; border-radius:6px;">
-            </div>
-        </div>
+<div class="card">
+    <div id="list"></div>
+</div>
 
-        <div class="summary-panel">
-            <div class="summary-item" style="background: var(--waiting);">待ち <span id="count-waiting" class="count">0</span></div>
-            <div class="summary-item" style="background: var(--scanning);">撮影中 <span id="count-scanning" class="count">0</span></div>
-            <div class="summary-item" style="background: var(--done);">終了 <span id="count-done" class="count">0</span></div>
-        </div>
-
-        <div id="list"></div>
+<div id="overlay" class="panel-overlay" onclick="closePartPanel()"></div>
+<div id="part-panel">
+    <h3 style="margin:0 0 15px 0; text-align:center;">部位を選んでください</h3>
+    <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+        <button class="btn-select side-opt" id="opt-L" onclick="selectSide('左')">左</button>
+        <button class="btn-select side-opt" id="opt-R" onclick="selectSide('右')">右</button>
+        <button class="btn-select side-opt active-side" id="opt-N" onclick="selectSide('')">なし</button>
     </div>
-
-    <div id="overlay" class="panel-overlay"></div>
-    <div id="part-panel">
-        <h3 style="margin-top:0;">部位選択</h3>
-        <div class="side-grid">
-            <button class="btn-select" id="side-L" onclick="setSide('左')">左</button>
-            <button class="btn-select" id="side-R" onclick="setSide('右')">右</button>
-            <button class="btn-select active" id="side-N" onclick="setSide('')">なし</button>
+    <div class="part-grid" id="part-button-container">
         </div>
-        <div class="part-grid">
-            <button class="btn-select" onclick="execPart('頭部')">頭部</button>
-            <button class="btn-select" onclick="execPart('腰椎')">腰椎</button>
-            <button class="btn-select" onclick="execPart('頸椎')">頸椎</button>
-            <button class="btn-select" onclick="execPart('胸椎')">胸椎</button>
-            <button class="btn-select" onclick="execPart('膝')">膝</button>
-            <button class="btn-select" onclick="execPart('肩')">肩</button>
-            <button class="btn-select" onclick="execPart('股関節')">股関節</button>
-            <button class="btn-select" onclick="execPart('手関節')">手関節</button>
-            <button class="btn-select" onclick="execPart('足関節')">足関節</button>
-            <button class="btn-select" onclick="execPart('腹部')">腹部</button>
-        </div>
-        <button onclick="closePartPanel()" style="width:100%; background:#444; color:white; margin-top:15px; border-radius: 4px; padding: 10px;">キャンセル</button>
-    </div>
+    <button onclick="closePartPanel()" style="width:100%; background:#666; color:white; margin-top:20px; padding:12px;">キャンセル</button>
+</div>
 
 <script>
-const doctors = ["鷲澤","永野","中村","石橋","木内","白石","小谷野","鈴木"];
+const partsList = ["頭部", "腰椎", "頸椎", "胸椎", "膝", "肩", "股関節", "手関節", "足関節", "腹部"];
+let currentId = null;
+let currentSide = "";
 let today = new Date().toISOString().split("T")[0];
-document.getElementById("datePicker").value = today;
-
-let targetId = null;
-let selectedSide = "";
 
 function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
-        const list = document.getElementById("list"); 
+        const list = document.getElementById("list");
         list.innerHTML = "";
-        let counts = { waiting: 0, scanning: 0, done: 0 };
-
         data.forEach(item => {
-            const status = item.status || '';
-            if (counts.hasOwnProperty(status)) counts[status]++;
-
             const div = document.createElement("div");
-            div.className = `slot status-${status}`;
+            div.className = `slot status-${item.status || ''}`;
             div.innerHTML = `
-                <div class="time">${item.time === 'EXTRA' ? '追加枠' : item.time}</div>
+                <div style="width:100px; font-weight:bold;">${item.time === 'EXTRA' ? '追加枠' : item.time}</div>
                 <div class="actions">
                     <input type="text" value="${item.patient_id || ''}" id="id-${item.id}" placeholder="ID" style="width:60px;">
                     <input type="text" value="${item.patient_name || ''}" id="name-${item.id}" placeholder="名前" style="width:120px;">
-                    <span class="part-text">${item.part ? '【'+item.part+'】' : ''}</span>
+                    <span style="color:red; font-weight:bold; margin:0 10px;">${item.part ? '【'+item.part+'】' : ''}</span>
                     
-                    <button class="btn-part-trigger" onclick="openPartPanel(${item.id})">部位選択</button>
-
-                    Dr: <select onchange="updateDoctor(${item.id}, this.value)">
-                        <option value="">--</option>
-                        ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
-                    </select>
-                    <button onclick="saveRow(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
-                    <button onclick="saveRow(${item.id}, 'done')" style="background:#4caf50;color:white">終了</button>
-                    <button onclick="addSlot()" style="background:#673ab7;color:white">＋</button>
-                    <button onclick="deleteSlot(${item.id})" style="background:#ddd">削</button>
+                    <button style="background:#607d8b; color:white;" onclick="openPartPanel(${item.id})">部位</button>
+                    
+                    <button onclick="save(${item.id}, 'waiting')" style="background:#ffa726; color:white;">待ち</button>
+                    <button onclick="save(${item.id}, 'done')" style="background:#4caf50; color:white;">終了</button>
+                    <button onclick="addSlot()" style="background:#673ab7; color:white;">＋</button>
                 </div>`;
             list.appendChild(div);
         });
-        document.getElementById("count-waiting").innerText = counts.waiting;
-        document.getElementById("count-scanning").innerText = counts.scanning;
-        document.getElementById("count-done").innerText = counts.done;
     });
 }
 
 // パネルを開く
 function openPartPanel(id) {
-    targetId = id;
-    setSide(''); // 初期化
+    currentId = id;
+    selectSide(''); // 毎回「なし」にリセット
+    
+    // パネル内の部位ボタンを動的に生成（確実にこの時点でのIDを紐付ける）
+    const container = document.getElementById('part-button-container');
+    container.innerHTML = partsList.map(p => `
+        <button class="btn-select" onclick="confirmPart('${p}')">${p}</button>
+    `).join("");
+
     document.getElementById('overlay').style.display = 'block';
     document.getElementById('part-panel').style.display = 'block';
 }
 
-function closePartPanel() {
-    document.getElementById('overlay').style.display = 'none';
-    document.getElementById('part-panel').style.display = 'none';
-    targetId = null;
+function selectSide(side) {
+    currentSide = side;
+    document.querySelectorAll('.side-opt').forEach(el => el.classList.remove('active-side'));
+    if(side === '左') document.getElementById('opt-L').classList.add('active-side');
+    else if(side === '右') document.getElementById('opt-R').classList.add('active-side');
+    else document.getElementById('opt-N').classList.add('active-side');
 }
 
-function setSide(side) {
-    selectedSide = side;
-    document.getElementById('side-L').classList.toggle('active', side === '左');
-    document.getElementById('side-R').classList.toggle('active', side === '右');
-    document.getElementById('side-N').classList.toggle('active', side === '');
-}
-
-// 部位ボタン（膝など）が押された時の本番処理
-function execPart(partName) {
-    if (!targetId) return;
-    const fullPart = selectedSide + partName;
+function confirmPart(partName) {
+    if(!currentId) return;
     
-    // その行の現在の入力値を取得
-    const name = document.getElementById(`name-${targetId}`).value;
-    const pid = document.getElementById(`id-${targetId}`).value;
+    const finalPart = currentSide + partName;
+    const pName = document.getElementById(`name-${currentId}`).value;
+    const pId = document.getElementById(`id-${currentId}`).value;
 
-    // APIに送信
     fetch("/api/update", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-            id: targetId,
-            part: fullPart,
-            patient_name: name,
-            patient_id: pid
+            id: currentId,
+            part: finalPart,
+            patient_name: pName,
+            patient_id: pId
         })
     }).then(() => {
         closePartPanel();
@@ -171,22 +123,19 @@ function execPart(partName) {
     });
 }
 
-// 既存の保存処理をまとめたもの
-function saveRow(id, status) {
+function closePartPanel() {
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('part-panel').style.display = 'none';
+    currentId = null;
+}
+
+function save(id, status) {
     const name = document.getElementById(`name-${id}`).value;
     const pid = document.getElementById(`id-${id}`).value;
     fetch("/api/update", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({ id, status, patient_name: name, patient_id: pid })
-    }).then(load);
-}
-
-function updateDoctor(id, doctor) {
-    fetch("/api/update", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ id, doctor })
     }).then(load);
 }
 
@@ -194,13 +143,7 @@ function addSlot() {
     fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today, time: "EXTRA" }) }).then(load);
 }
 
-function deleteSlot(id) {
-    if(confirm("削除しますか？")) fetch("/api/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ id }) }).then(load);
-}
-
-document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
 load();
-setInterval(load, 30000);
 </script>
 </body>
 </html>
