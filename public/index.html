@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>MRI予約管理</title>
-     <style>
+    <style>
         :root { --waiting: #fff4e5; --scanning: #e3f2fd; --done: #e8f5e9; --remote: #fce4ec; }
         body { font-family: sans-serif; background: #f0f2f5; padding: 20px; }
         .card { max-width: 950px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -12,7 +12,6 @@
         .summary-item { flex: 1; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; border: 1px solid #ddd; }
         .count { display: block; font-size: 1.8em; }
         .slot { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 8px; background: white; }
-        .status- { background: #ffffff !important; border-left: 8px solid #cccccc !important; }
         .status-waiting { background: var(--waiting) !important; border-left: 8px solid #ffa726 !important; }
         .status-scanning { background: var(--scanning) !important; border-left: 8px solid #2196f3 !important; }
         .status-done { background: var(--done) !important; border-left: 8px solid #4caf50 !important; opacity: 0.8; }
@@ -21,11 +20,34 @@
         .patient-tag { color: #e91e63; font-size: 0.8em; font-weight: bold; }
         .actions { flex-grow: 1; text-align: right; }
         button { padding: 6px 10px; margin-left: 4px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9em; }
+        .side-b.active { background: #2196f3 !important; color: white !important; }
         .btn-add { background: #673ab7; color: white; } 
         .btn-del { background: #ddd; color: #333; }
     </style>
 </head>
 <body>
+
+    <div id="overlay" onclick="closePartPanel()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998;"></div>
+    <div id="part-panel" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:white; border:2px solid #333; padding:20px; z-index:9999; border-radius:10px; width:320px; box-shadow:0 0 20px rgba(0,0,0,0.5);">
+        <h3 style="margin-top:0; text-align:center;">部位選択</h3>
+        <div style="display:flex; gap:8px; margin-bottom:15px; justify-content:center;">
+            <button class="side-b" id="s-L" onclick="selectSide('左')" style="padding:10px; flex:1; border:1px solid #ccc; cursor:pointer;">左</button>
+            <button class="side-b" id="s-R" onclick="selectSide('右')" style="padding:10px; flex:1; border:1px solid #ccc; cursor:pointer;">右</button>
+            <button class="side-b" id="s-N" onclick="selectSide('')" style="padding:10px; flex:1; border:1px solid #ccc; cursor:pointer;">なし</button>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <button onclick="confirmPart('頭部')" style="padding:10px; cursor:pointer;">頭部</button>
+            <button onclick="confirmPart('腰椎')" style="padding:10px; cursor:pointer;">腰椎</button>
+            <button onclick="confirmPart('頸椎')" style="padding:10px; cursor:pointer;">頸椎</button>
+            <button onclick="confirmPart('胸椎')" style="padding:10px; cursor:pointer;">胸椎</button>
+            <button onclick="confirmPart('膝')" style="padding:10px; cursor:pointer;">膝</button>
+            <button onclick="confirmPart('肩')" style="padding:10px; cursor:pointer;">肩</button>
+            <button onclick="confirmPart('股関節')" style="padding:10px; cursor:pointer;">股関節</button>
+            <button onclick="confirmPart('足関節')" style="padding:10px; cursor:pointer;">足関節</button>
+        </div>
+        <button onclick="closePartPanel()" style="width:100%; margin-top:15px; padding:10px; background:#444; color:white; border:none; cursor:pointer;">キャンセル</button>
+    </div>
+
     <div style="margin: 20px 0; text-align: center;">
         <a href="weekly.html" style="display: inline-block; background: #4caf50; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
             📅 週間予約表を表示する
@@ -37,36 +59,33 @@
             <h1>MRI 予約管理</h1>
             <div style="display: flex; align-items: center;">
                 <a href="search.html" style="text-decoration:none; background:#444; color:white; padding:8px 15px; border-radius:6px; margin-right:10px; font-size: 0.9em;">🔍 履歴検索</a>
-                
                 <a href="print.html" style="text-decoration:none; background:#2196f3; color:white; padding:8px 15px; border-radius:6px; margin-right:10px; font-size: 0.9em;">🖨️ 印刷</a>
-                
                 <input type="date" id="datePicker" style="padding:7px; border:1px solid #ccc; border-radius:6px;">
-                
                 <a href="report.html" style="margin-left:10px; text-decoration:none; background:#607d8b; color:white; padding:8px 15px; border-radius:6px; font-size: 0.9em;">📊 レポート</a>
             </div>
         </div>
-    <div class="summary-panel">
-        <div class="summary-item" style="background: var(--waiting);">待ち <span id="count-waiting" class="count">0</span></div>
-        <div class="summary-item" style="background: var(--scanning);">撮影中 <span id="count-scanning" class="count">0</span></div>
-        <div class="summary-item" style="background: var(--done);">終了 <span id="count-done" class="count">0</span></div>
+        <div class="summary-panel">
+            <div class="summary-item" style="background: var(--waiting);">待ち <span id="count-waiting" class="count">0</span></div>
+            <div class="summary-item" style="background: var(--scanning);">撮影中 <span id="count-scanning" class="count">0</span></div>
+            <div class="summary-item" style="background: var(--done);">終了 <span id="count-done" class="count">0</span></div>
+        </div>
+        <div id="list"></div>
     </div>
-    <div id="list"></div>
-</div>
 
 <script>
-// 1. 変数の宣言（スクリプトの先頭の方に置いてください）
 let currentEditId = null;
 let currentSide = "";
+const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木"];
+let today = new Date().toISOString().split("T")[0];
+document.getElementById("datePicker").value = today;
 
-// 2. パネルを開く（IDを確実に保持する）
 function openPartPanel(id) {
     currentEditId = id;
-    selectSide(''); // 「なし」をデフォルトに
+    selectSide('');
     document.getElementById('overlay').style.display = 'block';
     document.getElementById('part-panel').style.display = 'block';
 }
 
-// 3. 左右を選択する
 function selectSide(side) {
     currentSide = side;
     document.querySelectorAll('.side-b').forEach(b => b.classList.remove('active'));
@@ -75,50 +94,27 @@ function selectSide(side) {
     else document.getElementById('s-N').classList.add('active');
 }
 
-// 4. 部位（膝など）を押して確定・保存する
 function confirmPart(partName) {
     if (!currentEditId) return;
-
-    // 選択された「左右」と「部位」を合体
     const fullPart = currentSide + partName;
+    const name = document.getElementById(`name-${currentEditId}`).value;
+    const pid = document.getElementById(`id-${currentEditId}`).value;
 
-    // 【重要】その行の入力欄から「名前」と「ID」を直接つかむ
-    const nameEl = document.getElementById(`name-${currentEditId}`);
-    const idEl = document.getElementById(`id-${currentEditId}`);
-    
-    const name = nameEl ? nameEl.value : "";
-    const pid = idEl ? idEl.value : "";
-
-    // APIへ送信（既存の /api/update を使用）
     fetch("/api/update", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            id: currentEditId,
-            part: fullPart,
-            patient_name: name,
-            patient_id: pid
-        })
+        body: JSON.stringify({ id: currentEditId, part: fullPart, patient_name: name, patient_id: pid })
     }).then(() => {
         closePartPanel();
-        load(); // 一覧を再読み込み
-    }).catch(err => {
-        console.error("保存失敗:", err);
-        alert("保存に失敗しました。");
+        load();
     });
 }
 
-// 5. パネルを閉じる
 function closePartPanel() {
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('part-panel').style.display = 'none';
     currentEditId = null;
 }
-    
-const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木"];
-let today = new Date().toISOString().split("T")[0];
-document.getElementById("datePicker").value = today;
-
 
 function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
@@ -133,24 +129,19 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-            // IDと名前を分けた入力欄
             const idValue = item.patient_id || "";
             const nameValue = item.patient_name || "";
             const partValue = item.part ? ` [${item.part}]` : "";
             
-            const nameArea = `
-                <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" 
-                       style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-                <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" 
-                       onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')"
-                       style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-                <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
-            `;
-
             div.innerHTML = `
                 <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                 <div class="actions">
-                    ${nameArea}
+                    <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                    <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                    <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
+
+                    <button onclick="openPartPanel(${item.id})" style="background:#607d8b; color:white; font-weight:bold;">部位</button>
+
                     Dr: <select onchange="update(${item.id}, null, this.value)">
                         <option value="">--</option>
                         ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
@@ -164,11 +155,10 @@ function load() {
                 </div>`;
             list.appendChild(div);
         });
-
         document.getElementById("count-waiting").innerText = counts.waiting;
         document.getElementById("count-scanning").innerText = counts.scanning;
         document.getElementById("count-done").innerText = counts.done;
-    }).catch(err => console.error("読み込みエラー:", err));
+    });
 }
 
 function update(id, status, doctor) {
@@ -177,13 +167,11 @@ function update(id, status, doctor) {
     fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(load); 
 }
 
-// IDも一緒に保存するように強化！
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`)?.value;
     const pid = document.getElementById(`id-${id}`)?.value;
     fetch("/api/update", { 
-        method: "POST", 
-        headers: {"Content-Type":"application/json"}, 
+        method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, status, patient_name: name, patient_id: pid}) 
     }).then(load);
 }
@@ -192,8 +180,7 @@ function startWithOption(id) {
     const name = document.getElementById(`name-${id}`)?.value;
     const pid = document.getElementById(`id-${id}`)?.value;
     fetch("/api/start", { 
-        method: "POST", 
-        headers: {"Content-Type":"application/json"}, 
+        method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, patient_name: name, patient_id: pid}) 
     }).then(load);
 }
@@ -202,8 +189,7 @@ function finishScan(id) {
     const name = document.getElementById(`name-${id}`)?.value || "受診済";
     const pid = document.getElementById(`id-${id}`)?.value || "";
     fetch("/api/update", { 
-        method: "POST", 
-        headers: {"Content-Type":"application/json"}, 
+        method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid}) 
     }).then(load); 
 }
