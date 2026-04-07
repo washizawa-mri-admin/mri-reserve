@@ -93,25 +93,26 @@ app.post("/api/start", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// --- 各種ステータス変更・削除 ---
-app.post("/api/finish", async (req, res) => { 
-  await supabase.from('slots').update({ status: 'done' }).eq('id', req.body.id); 
-  res.json({ status: "ok" }); 
-});
+// --- 枠を消さずに中身だけリセットする ---
+app.post("/api/delete", async (req, res) => {
+  const { id } = req.body;
+  
+  // すべての項目を空（null または 初期値）に更新する
+  const { error } = await supabase
+    .from('slots')
+    .update({
+      patient_id: null,
+      patient_name: null,
+      part: null,
+      status: "", // ステータスを「なし」に戻す
+      doctor: null,
+      is_remote: 0,
+      start_time: null
+    })
+    .eq('id', id);
 
-app.post("/api/remote", async (req, res) => { 
-  await supabase.from('slots').update({ 
-    is_remote: 1, 
-    patient_id: req.body.patient_id, 
-    patient_name: req.body.patient_name, 
-    status: 'waiting' 
-  }).eq('id', req.body.id); 
-  res.json({ status: "ok" }); 
-});
-
-app.post("/api/delete", async (req, res) => { 
-  await supabase.from('slots').delete().eq('id', req.body.id); 
-  res.json({ status: "ok" }); 
+  if (error) return res.status(500).json(error);
+  res.json({ status: "ok" });
 });
 
 // --- レポート（実績計上）用 ---
