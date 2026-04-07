@@ -54,6 +54,67 @@
 </div>
 
 <script>
+// 1. 変数の宣言（スクリプトの先頭の方に置いてください）
+let currentEditId = null;
+let currentSide = "";
+
+// 2. パネルを開く（IDを確実に保持する）
+function openPartPanel(id) {
+    currentEditId = id;
+    selectSide(''); // 「なし」をデフォルトに
+    document.getElementById('overlay').style.display = 'block';
+    document.getElementById('part-panel').style.display = 'block';
+}
+
+// 3. 左右を選択する
+function selectSide(side) {
+    currentSide = side;
+    document.querySelectorAll('.side-b').forEach(b => b.classList.remove('active'));
+    if(side === '左') document.getElementById('s-L').classList.add('active');
+    else if(side === '右') document.getElementById('s-R').classList.add('active');
+    else document.getElementById('s-N').classList.add('active');
+}
+
+// 4. 部位（膝など）を押して確定・保存する
+function confirmPart(partName) {
+    if (!currentEditId) return;
+
+    // 選択された「左右」と「部位」を合体
+    const fullPart = currentSide + partName;
+
+    // 【重要】その行の入力欄から「名前」と「ID」を直接つかむ
+    const nameEl = document.getElementById(`name-${currentEditId}`);
+    const idEl = document.getElementById(`id-${currentEditId}`);
+    
+    const name = nameEl ? nameEl.value : "";
+    const pid = idEl ? idEl.value : "";
+
+    // APIへ送信（既存の /api/update を使用）
+    fetch("/api/update", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            id: currentEditId,
+            part: fullPart,
+            patient_name: name,
+            patient_id: pid
+        })
+    }).then(() => {
+        closePartPanel();
+        load(); // 一覧を再読み込み
+    }).catch(err => {
+        console.error("保存失敗:", err);
+        alert("保存に失敗しました。");
+    });
+}
+
+// 5. パネルを閉じる
+function closePartPanel() {
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('part-panel').style.display = 'none';
+    currentEditId = null;
+}
+    
 const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木"];
 let today = new Date().toISOString().split("T")[0];
 document.getElementById("datePicker").value = today;
