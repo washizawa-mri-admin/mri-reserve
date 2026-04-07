@@ -4,48 +4,58 @@
     <meta charset="UTF-8">
     <title>MRI 1週間予約表（A4横）</title>
     <style>
-        @page { size: A4 landscape; margin: 5mm; } /* 余白をさらに狭く */
+        @page { size: A4 landscape; margin: 5mm; }
         body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         
+        /* 操作エリアのスタイル */
+        .no-print { 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+            margin-bottom: 10px; 
+            background: #f0f0f0; 
+            padding: 10px; 
+            border-radius: 5px;
+        }
+        .btn { 
+            padding: 6px 12px; 
+            cursor: pointer; 
+            border: 1px solid #999; 
+            background: #fff; 
+            border-radius: 4px;
+            font-size: 12px;
+            text-decoration: none;
+            color: black;
+            display: inline-block;
+        }
+        .btn:hover { background: #eee; }
+        .btn-back { background: #666; color: white; border: none; }
+        .btn-back:hover { background: #444; }
+
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
         .time-col { width: 40px; font-weight: bold; }
         
-        /* paddingを0にして横幅を稼ぐ */
         td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
-        
-        /* 氏名：少し小さくして改行を防ぐ */
         .name-cell { font-weight: bold; font-size: 10px; overflow: hidden; white-space: nowrap; }
-        
-        /* 部位：10pxの太字、かつ絶対に改行させない */
-        .part-cell { 
-            font-size: 10px; 
-            color: #000; 
-            font-weight: bold; 
-            overflow: hidden; 
-            white-space: nowrap; 
-            text-overflow: clip; 
-        }
+        .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; }
 
-        .done-past { 
-            background-color: #ffcccc !important; 
-            -webkit-print-color-adjust: exact; 
-            print-color-adjust: exact;
-        }
-
+        .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
         .total-label { text-align: right; padding-right: 5px; }
 
-        .no-print { margin-bottom: 10px; }
         @media print { .no-print { display: none; } }
     </style>
 </head>
 <body>
     <div class="no-print">
-        <button onclick="shiftWeek(-1)">◀ 前の週</button>
-        <span id="weekTitle" style="margin: 0 15px; font-weight:bold;"></span>
-        <button onclick="shiftWeek(1)">次の週 ▶</button>
-        <button onclick="window.print()">🖨️ A4横で印刷</button>
+        <a href="index.html" class="btn btn-back">🏠 予約管理に戻る</a>
+        <div style="flex-grow: 1; text-align: center;">
+            <button class="btn" onclick="shiftWeek(-1)">◀ 前の週</button>
+            <span id="weekTitle" style="margin: 0 15px; font-weight:bold;"></span>
+            <button class="btn" onclick="shiftWeek(1)">次の週 ▶</button>
+        </div>
+        <button class="btn" onclick="window.print()">🖨️ A4横で印刷</button>
     </div>
 
     <table>
@@ -89,7 +99,6 @@
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
                 hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                // 比率を極限まで調整（氏名2:部位1に近い比率）
                 shRow.innerHTML += `<th style="width: 11%;">氏名</th><th style="width: 5%;">部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
