@@ -4,13 +4,21 @@
     <meta charset="UTF-8">
     <title>MRI 1週間予約表（A4横）</title>
     <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 10px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 35px; vertical-align: middle; }
-        th { background: #eee; height: 32px; }
-        .time-col { font-weight: bold; width: 60px; }
+        @page { size: A4 landscape; margin: 8mm; }
+        body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         
+        /* ヘッダー */
+        th { border: 1px solid #000; background: #eee; height: 30px; font-size: 11px; }
+        .time-col { width: 45px; font-weight: bold; }
+        
+        /* セル設定 */
+        td { border: 1px solid #000; padding: 2px; text-align: center; height: 28px; vertical-align: middle; word-break: break-all; }
+        
+        /* 名前と部位の列幅比率 (名前6:部位4くらい) */
+        .name-cell { border-right: 0.5px dotted #666; font-weight: bold; font-size: 11px; }
+        .part-cell { font-size: 9px; color: #333; }
+
         /* 撮影済み（ピンク） */
         .done-past { 
             background-color: #ffcccc !important; 
@@ -18,16 +26,8 @@
             print-color-adjust: exact;
         }
 
-        /* 部位のテキストスタイル */
-        .part-text {
-            display: block;
-            font-size: 0.85em;
-            color: #444;
-            margin-top: 2px;
-            font-weight: normal;
-        }
-
-        .total-row { background-color: #f8f9fa; font-weight: bold; }
+        /* 合計行 */
+        .total-row { background-color: #f8f9fa; font-weight: bold; height: 30px; }
         .total-label { text-align: right; padding-right: 10px; }
 
         .no-print { margin-bottom: 10px; }
@@ -43,7 +43,13 @@
     </div>
 
     <table>
-        <thead><tr id="headerRow"><th>時間</th></tr></thead>
+        <thead>
+            <tr id="headerRow">
+                <th class="time-col" rowspan="2">時間</th>
+                </tr>
+            <tr id="subHeaderRow">
+                </tr>
+        </thead>
         <tbody id="bodyRows"></tbody>
         <tfoot>
             <tr id="totalRow" class="total-row">
@@ -62,10 +68,12 @@
         
         async function load() {
             const hRow = document.getElementById("headerRow");
+            const shRow = document.getElementById("subHeaderRow");
             const bRows = document.getElementById("bodyRows");
             const tRow = document.getElementById("totalRow");
             
-            hRow.innerHTML = "<th>時間</th>"; 
+            hRow.innerHTML = '<th class="time-col" rowspan="2">時間</th>';
+            shRow.innerHTML = '';
             bRows.innerHTML = "";
             tRow.innerHTML = '<td class="total-label">合計</td>';
             
@@ -75,7 +83,8 @@
             for(let i=0; i<6; i++) {
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
-                hRow.innerHTML += `<th>${days[i]}<br>${d.getMonth()+1}/${d.getDate()}</th>`;
+                hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
+                shRow.innerHTML += `<th style="width:10%;">氏名</th><th style="width:6%;">部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
@@ -96,31 +105,26 @@
                 for(let i=0; i<6; i++) {
                     const slot = weekData[i].find(s => s.time === time);
                     let cellClass = '';
-                    let content = '';
+                    let nameContent = '';
+                    let partContent = '';
 
                     if (slot) {
                         const isDone = (slot.status === 'done' || slot.status === '完了');
-                        const hasName = !!slot.patient_name;
-                        const hasPart = !!slot.part;
-
-                        // 名前がある、部位がある、または完了(done)なら表示・カウント
-                        if (hasName || hasPart || isDone) {
-                            const pName = slot.patient_name || (isDone ? '(氏名なし)' : '');
-                            const pPart = slot.part ? `<span class="part-text">【${slot.part}】</span>` : '';
-                            
-                            content = `${pName}${pPart}`;
+                        if (slot.patient_name || slot.part || isDone) {
+                            nameContent = slot.patient_name || (isDone ? '---' : '');
+                            partContent = slot.part || '';
                             dailyCounts[i]++;
-                            
-                            if (isDone) cellClass = 'class="done-past"';
+                            if (isDone) cellClass = 'done-past';
                         }
                     }
-                    row += `<td ${cellClass}>${content}</td>`;
+                    row += `<td class="name-cell ${cellClass}">${nameContent}</td>`;
+                    row += `<td class="part-cell ${cellClass}">${partContent}</td>`;
                 }
                 bRows.innerHTML += row + "</tr>";
             });
 
             dailyCounts.forEach(count => {
-                tRow.innerHTML += `<td>${count} 件</td>`;
+                tRow.innerHTML += `<td colspan="2">${count} 件</td>`;
             });
         }
 
