@@ -7,34 +7,14 @@
         @page { size: A4 landscape; margin: 5mm; }
         body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
         
-        /* 操作エリアのスタイル */
-        .no-print { 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-            margin-bottom: 10px; 
-            background: #f0f0f0; 
-            padding: 10px; 
-            border-radius: 5px;
-        }
-        .btn { 
-            padding: 6px 12px; 
-            cursor: pointer; 
-            border: 1px solid #999; 
-            background: #fff; 
-            border-radius: 4px;
-            font-size: 12px;
-            text-decoration: none;
-            color: black;
-            display: inline-block;
-        }
+        .no-print { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #999; background: #fff; border-radius: 4px; font-size: 12px; text-decoration: none; color: black; display: inline-block; }
         .btn:hover { background: #eee; }
         .btn-back { background: #666; color: white; border: none; }
-        .btn-back:hover { background: #444; }
 
         table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
-        .time-col { width: 40px; font-weight: bold; }
+        .time-col { width: 50px; font-weight: bold; background: #fafafa; }
         
         td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
         .name-cell { font-weight: bold; font-size: 10px; overflow: hidden; white-space: nowrap; }
@@ -43,6 +23,8 @@
         .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
         .total-label { text-align: right; padding-right: 5px; }
+
+        .extra-row { color: #d63384; } /* 追加枠だとわかるように少しだけ色を変える（任意） */
 
         @media print { .no-print { display: none; } }
     </style>
@@ -60,26 +42,18 @@
 
     <table>
         <thead>
-            <tr id="headerRow">
-                <th class="time-col" rowspan="2">時間</th>
-            </tr>
+            <tr id="headerRow"><th class="time-col" rowspan="2">時間</th></tr>
             <tr id="subHeaderRow"></tr>
         </thead>
         <tbody id="bodyRows"></tbody>
         <tfoot>
-            <tr id="totalRow" class="total-row">
-                <td class="total-label">合計</td>
-            </tr>
+            <tr id="totalRow" class="total-row"><td class="total-label">合計</td></tr>
         </tfoot>
     </table>
 
     <script>
         let monday = getMonday(new Date());
-        function getMonday(d) { 
-            let date = new Date(d);
-            let day = date.getDay(), diff = date.getDate() - day + (day == 0 ? -6 : 1); 
-            return new Date(date.setDate(diff)); 
-        }
+        function getMonday(d) { let date = new Date(d); let day = date.getDay(), diff = date.getDate() - day + (day == 0 ? -6 : 1); return new Date(date.setDate(diff)); }
         
         async function load() {
             const hRow = document.getElementById("headerRow");
@@ -88,13 +62,11 @@
             const tRow = document.getElementById("totalRow");
             
             hRow.innerHTML = '<th class="time-col" rowspan="2">時間</th>';
-            shRow.innerHTML = '';
-            bRows.innerHTML = "";
+            shRow.innerHTML = ''; bRows.innerHTML = "";
             tRow.innerHTML = '<td class="total-label">合計</td>';
             
             const days = ['月','火','水','木','金','土'];
             const dates = [];
-
             for(let i=0; i<6; i++) {
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
@@ -109,38 +81,54 @@
                 weekData[i] = await res.json();
             }
 
-            const allFetchedTimes = Object.values(weekData).flat().map(s => s.time);
+            // 【1】基本の時間枠（固定）
             const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
-            const uniqueTimes = [...new Set([...baseTimes, ...allFetchedTimes])].sort();
-
-            let dailyCounts = [0, 0, 0, 0, 0, 0];
             
-            uniqueTimes.forEach(time => {
+            let dailyCounts = [0, 0, 0, 0, 0, 0];
+
+            // 【2】固定枠の表示
+            baseTimes.forEach(time => {
                 let row = `<tr><td class="time-col">${time}</td>`;
                 for(let i=0; i<6; i++) {
                     const slot = weekData[i].find(s => s.time === time);
-                    let cellClass = '';
-                    let nameContent = '';
-                    let partContent = '';
-
-                    if (slot) {
-                        const isDone = (slot.status === 'done' || slot.status === '完了');
-                        if (slot.patient_name || slot.part || isDone) {
-                            nameContent = slot.patient_name || (isDone ? '---' : '');
-                            partContent = slot.part || '';
-                            dailyCounts[i]++;
-                            if (isDone) cellClass = 'done-past';
-                        }
+                    let cellClass = '', nameContent = '', partContent = '';
+                    if (slot && (slot.patient_name || slot.part || slot.status === 'done')) {
+                        nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
+                        partContent = slot.part || '';
+                        dailyCounts[i]++;
+                        if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
                     }
-                    row += `<td class="name-cell ${cellClass}">${nameContent}</td>`;
-                    row += `<td class="part-cell ${cellClass}">${partContent}</td>`;
+                    row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
                 }
                 bRows.innerHTML += row + "</tr>";
             });
 
-            dailyCounts.forEach(count => {
-                tRow.innerHTML += `<td colspan="2">${count} 件</td>`;
-            });
+            // 【3】追加枠（固定枠に入っていないデータを「追加枠」として表示）
+            let maxExtras = 0;
+            let extraSlotsByDay = {};
+            for(let i=0; i<6; i++) {
+                // baseTimesに含まれない、かつ有効なデータがあるものを抽出
+                extraSlotsByDay[i] = weekData[i].filter(s => !baseTimes.includes(s.time) && (s.patient_name || s.part || s.status === 'done'));
+                if(extraSlotsByDay[i].length > maxExtras) maxExtras = extraSlotsByDay[i].length;
+            }
+
+            for(let j=0; j < maxExtras; j++) {
+                let row = `<tr><td class="time-col extra-row">追加枠</td>`;
+                for(let i=0; i<6; i++) {
+                    const slot = extraSlotsByDay[i][j];
+                    let cellClass = '', nameContent = '', partContent = '';
+                    if (slot) {
+                        nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
+                        partContent = slot.part || '';
+                        dailyCounts[i]++;
+                        if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
+                    }
+                    row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
+                }
+                bRows.innerHTML += row + "</tr>";
+            }
+
+            dailyCounts.forEach(count => { tRow.innerHTML += `<td colspan="2">${count} 件</td>`; });
         }
 
         function shiftWeek(n) { monday.setDate(monday.getDate() + (n * 7)); load(); }
