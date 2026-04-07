@@ -7,14 +7,24 @@
         @page { size: A4 landscape; margin: 10mm; }
         body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 10px; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 28px; }
+        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 35px; vertical-align: middle; }
         th { background: #eee; height: 32px; }
         .time-col { font-weight: bold; width: 60px; }
         
+        /* 撮影済み（ピンク） */
         .done-past { 
             background-color: #ffcccc !important; 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
+        }
+
+        /* 部位のテキストスタイル */
+        .part-text {
+            display: block;
+            font-size: 0.85em;
+            color: #444;
+            margin-top: 2px;
+            font-weight: normal;
         }
 
         .total-row { background-color: #f8f9fa; font-weight: bold; }
@@ -69,18 +79,14 @@
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
-            // 1週間分のデータを取得
             let weekData = {};
             for(let i=0; i<6; i++) {
                 let res = await fetch(`/api/slots?date=${dates[i]}`);
                 weekData[i] = await res.json();
             }
 
-            // 【重要】全データから「存在する時間」をすべて抽出して並べる
             const allFetchedTimes = Object.values(weekData).flat().map(s => s.time);
             const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
-            
-            // 基礎となる時間と、実際にデータがあった時間を合体させて重複を消す
             const uniqueTimes = [...new Set([...baseTimes, ...allFetchedTimes])].sort();
 
             let dailyCounts = [0, 0, 0, 0, 0, 0];
@@ -95,11 +101,16 @@
                     if (slot) {
                         const isDone = (slot.status === 'done' || slot.status === '完了');
                         const hasName = !!slot.patient_name;
+                        const hasPart = !!slot.part;
 
-                        // 名前があるか、完了(done)なら表示・カウント
-                        if (hasName || isDone) {
-                            content = `${slot.patient_name || ''}<br><small>${slot.part || ''}</small>`;
+                        // 名前がある、部位がある、または完了(done)なら表示・カウント
+                        if (hasName || hasPart || isDone) {
+                            const pName = slot.patient_name || (isDone ? '(氏名なし)' : '');
+                            const pPart = slot.part ? `<span class="part-text">【${slot.part}】</span>` : '';
+                            
+                            content = `${pName}${pPart}`;
                             dailyCounts[i]++;
+                            
                             if (isDone) cellClass = 'class="done-past"';
                         }
                     }
