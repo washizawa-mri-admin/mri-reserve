@@ -200,8 +200,15 @@ function requestRemote(id) {
     fetch("/api/remote", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id, patient_id: pid, patient_name: pname}) }).then(load);
 }
 
+// JavaScript内の deleteSlot 関数を書き換え
 function deleteSlot(id) { 
-    if(confirm("削除しますか？")) fetch("/api/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({id}) }).then(load); 
+    if(confirm("入力内容をリセットして空枠に戻しますか？")) {
+        fetch("/api/delete", { 
+            method: "POST", 
+            headers: {"Content-Type":"application/json"}, 
+            body: JSON.stringify({id}) 
+        }).then(load); 
+    }
 }
 
 function addSlot() {
