@@ -11,7 +11,6 @@
         th { background: #eee; height: 32px; }
         .time-col { font-weight: bold; width: 60px; }
         
-        /* 撮影済み（ピンク） */
         .done-past { 
             background-color: #ffcccc !important; 
             -webkit-print-color-adjust: exact; 
@@ -70,16 +69,23 @@
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
+            // 1週間分のデータを取得
             let weekData = {};
             for(let i=0; i<6; i++) {
                 let res = await fetch(`/api/slots?date=${dates[i]}`);
                 weekData[i] = await res.json();
             }
 
-            let dailyCounts = [0, 0, 0, 0, 0, 0];
-            const allTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
+            // 【重要】全データから「存在する時間」をすべて抽出して並べる
+            const allFetchedTimes = Object.values(weekData).flat().map(s => s.time);
+            const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
             
-            allTimes.forEach(time => {
+            // 基礎となる時間と、実際にデータがあった時間を合体させて重複を消す
+            const uniqueTimes = [...new Set([...baseTimes, ...allFetchedTimes])].sort();
+
+            let dailyCounts = [0, 0, 0, 0, 0, 0];
+            
+            uniqueTimes.forEach(time => {
                 let row = `<tr><td class="time-col">${time}</td>`;
                 for(let i=0; i<6; i++) {
                     const slot = weekData[i].find(s => s.time === time);
@@ -87,10 +93,10 @@
                     let content = '';
 
                     if (slot) {
-                        // 【修正】名前がある、またはステータスが done の場合に表示・カウント
                         const isDone = (slot.status === 'done' || slot.status === '完了');
                         const hasName = !!slot.patient_name;
 
+                        // 名前があるか、完了(done)なら表示・カウント
                         if (hasName || isDone) {
                             content = `${slot.patient_name || ''}<br><small>${slot.part || ''}</small>`;
                             dailyCounts[i]++;
