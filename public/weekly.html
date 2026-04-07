@@ -78,8 +78,11 @@
         <p style="margin:10px 0 5px 0; font-size:0.8em; color:#666;">部位選択</p>
         <div class="grid" id="partsGrid"></div>
         
-        <button onclick="save()" style="width:100%; padding:15px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1.1em; font-weight:bold; cursor:pointer; margin-top:10px;">予約を確定する</button>
-        <button onclick="closeModal()" style="width:100%; background:none; border:none; color:gray; margin-top:10px; cursor:pointer;">キャンセル</button>
+<button onclick="save()" style="width:100%; padding:15px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1.1em; font-weight:bold; cursor:pointer; margin-top:10px;">予約を確定・更新する</button>
+
+<button onclick="deleteReservation()" style="width:100%; padding:10px; background:#dc3545; color:white; border:none; border-radius:4px; font-size:0.9em; font-weight:bold; cursor:pointer; margin-top:10px;">この予約を消去する</button>
+
+<button onclick="closeModal()" style="width:100%; background:none; border:none; color:gray; margin-top:10px; cursor:pointer;">キャンセル</button>
     </div>
 </div>
 
@@ -158,30 +161,65 @@
 
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
-    async function save() {
-        const name = document.getElementById('pName').value;
-        const pid = document.getElementById('pId').value;
-        
-        if (!name && !pid) return alert("IDまたは氏名を入力してください");
+// 保存・修正用（既存のものをこれに差し替え）
+async function save() {
+    const name = document.getElementById('pName').value;
+    const pid = document.getElementById('pId').value;
+    
+    // 削除ボタンからの呼び出しでなければ、入力チェック
+    if (!name && !pid) return alert("IDまたは氏名を入力してください");
 
-        const res = await fetch("/api/reserve", {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({
-                id: curId, 
-                patient_name: name || "予約済", 
-                patient_id: pid,
-                part: curP
-            })
-        });
+    const res = await fetch("/api/reserve", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            id: curId, 
+            patient_name: name, // 空で送れば空になる
+            patient_id: pid,
+            part: curP
+        })
+    });
 
-        if(res.ok) {
-            closeModal();
-            loadWeek();
-        } else {
-            alert("保存に失敗しました。");
-        }
+    if(res.ok) {
+        closeModal();
+        loadWeek();
+    } else {
+        alert("保存に失敗しました。");
     }
+}
+
+// 予約消去用の関数（ステータスリセット付き）
+async function deleteReservation() {
+    if(!confirm("この予約を消去してもよろしいですか？")) return;
+    
+    const res = await fetch("/api/reserve", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            id: curId, 
+            patient_name: "", 
+            patient_id: "",
+            part: "",
+            status: "" // ★ステータスも空にして、当日一覧からも消す
+        })
+    });
+
+    if(res.ok) {
+        curP = ""; // ★選択中の部位もリセット
+        closeModal();
+        loadWeek();
+    } else {
+        alert("消去に失敗しました。");
+    }
+}
+
+    if(res.ok) {
+        closeModal();
+        loadWeek();
+    } else {
+        alert("消去に失敗しました。");
+    }
+}
 
     // 部位ボタン生成
     const pGrid = document.getElementById("partsGrid");
