@@ -1,66 +1,37 @@
+
 <!DOCTYPE html>
 <html lang="ja">
-<style>
-    /* 1. 背景色の復活と基本設定 */
-    body { 
-        font-family: sans-serif; 
-        background-color: #f0f2f5 !important; /* 薄いグレーを強制 */
-        padding: 10px; 
-        margin: 0; 
-    }
-    .container { 
-        background: white; 
-        padding: 15px; 
-        border-radius: 8px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
-        overflow-x: auto; 
-    }
-
-    /* 2. 入力欄を分かりやすく（枠線をハッキリ） */
-    .input-group input { 
-        width: 100%; 
-        padding: 12px; /* 少し大きくして打ちやすく */
-        box-sizing: border-box; 
-        border: 2px solid #ccc; /* 枠線を太く */
-        border-radius: 6px; 
-        font-size: 16px; /* ★重要：16px以上にするとiPhoneで勝手にズームされません */
-        background-color: #ffffff;
-    }
-    .input-group input:focus {
-        border-color: #28a745; /* 入力中（フォーカス時）は緑色に光る */
-        outline: none;
-    }
-
-    /* 3. スマホでキーボードが出ても隠れないようにする */
-    @media (max-width: 600px) {
-        #modal {
-            align-items: flex-start; /* 中央ではなく、画面の上側に表示 */
-            padding-top: 20px;
-        }
-        .modal-content {
-            width: 95% !important;
-            max-height: 85vh; /* 画面の85%までに抑える */
-            overflow-y: auto; /* はみ出したらスクロール */
-            position: relative;
-            padding: 20px !important;
-            margin-bottom: 20px; /* キーボードとの余白 */
-        }
-        
-        /* スマホ時はボタンをさらに押しやすく */
-        .btn-opt {
-            padding: 15px 5px;
-            font-weight: bold;
-        }
-    }
-
-    /* その他、既存のスタイルは維持 */
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 800px; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 0.85em; }
-    .slot { cursor: pointer; height: 55px; vertical-align: top; }
-    .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
-    .part-info { background: #4caf50; color: white; font-size: 0.75em; padding: 1px 4px; border-radius: 3px; }
-    .btn-opt.active, .side-btn.active { background: #28a745 !important; color: white !important; }
-</style>
+<head>
+    <meta charset="UTF-8">
+    <title>MRI週間予約状況</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; }
+        .container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; }
+        h2 { text-align: center; color: #333; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 800px; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 0.85em; }
+        th { background: #e9ecef; position: sticky; top: 0; }
+        .time-col { width: 60px; background: #f8f9fa; font-weight: bold; }
+        .slot { cursor: pointer; height: 55px; vertical-align: top; transition: 0.2s; overflow: hidden; }
+        .slot:hover { background: #f1f3f5; }
+        .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        .patient-info { font-weight: bold; font-size: 0.9em; display: block; color: #2e7d32; }
+        .id-info { font-size: 0.75em; color: #666; display: block; }
+        .part-info { background: #4caf50; color: white; font-size: 0.75em; padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px; }
+        .empty { color: #ccc; font-size: 0.8em; line-height: 45px; }
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .btn-nav { padding: 8px 15px; cursor: pointer; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; }
+        .btn-home { text-decoration: none; background: #666; color: white; padding: 8px 15px; border-radius: 4px; font-size: 0.9em; }
+        #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
+        .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; }
+        .input-group { margin-bottom: 10px; }
+        .input-group label { display: block; font-size: 0.8em; color: #666; margin-bottom: 2px; }
+        .input-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
+        .btn-opt { padding: 8px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+        .btn-opt.active, .side-btn.active { background: #28a745; color: white; border-color: #28a745; }
+    </style>
+</head>
 <body>
 
 <div class="container">
