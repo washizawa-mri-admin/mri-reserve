@@ -7,18 +7,16 @@
         @page { size: A4 landscape; margin: 10mm; }
         body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 10px; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; }
+        th, td { border: 1px solid #333; padding: 4px; text-align: center; overflow: hidden; height: 25px; }
         th { background: #eee; height: 30px; }
         .time-col { font-weight: bold; width: 60px; }
         
-        /* 撮影済み（ピンク）の設定：印刷時も色が出るように設定 */
         .done-past { 
             background-color: #ffcccc !important; 
             -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
         }
 
-        /* 合計行のスタイル */
         .total-row { background-color: #f8f9fa; font-weight: bold; }
         .total-label { text-align: right; padding-right: 10px; }
 
@@ -40,7 +38,7 @@
         <tfoot>
             <tr id="totalRow" class="total-row">
                 <td class="total-label">合計</td>
-                </tr>
+            </tr>
         </tfoot>
     </table>
 
@@ -56,16 +54,14 @@
             const hRow = document.getElementById("headerRow");
             const bRows = document.getElementById("bodyRows");
             const tRow = document.getElementById("totalRow");
-            const today = new Date(); today.setHours(0,0,0,0);
-
+            
             hRow.innerHTML = "<th>時間</th>"; 
             bRows.innerHTML = "";
-            tRow.innerHTML = '<td class="total-label">合計</td>'; // 初期化
+            tRow.innerHTML = '<td class="total-label">合計</td>';
             
             const days = ['月','火','水','木','金','土'];
             const dates = [];
 
-            // ヘッダー作成
             for(let i=0; i<6; i++) {
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
@@ -73,34 +69,31 @@
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
-            // データ取得
             let weekData = {};
             for(let i=0; i<6; i++) {
                 let res = await fetch(`/api/slots?date=${dates[i]}`);
                 weekData[i] = await res.json();
             }
 
-            // 各曜日の件数カウント用
             let dailyCounts = [0, 0, 0, 0, 0, 0];
 
-            // 時間枠の取得とソート
-            const allTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
+            // 【ここが重要】表示したい時間を全て固定で定義する
+            const allTimes = [
+                "09:00","09:30","10:00","10:30","11:00","11:30","12:00",
+                "14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"
+            ];
             
             allTimes.forEach(time => {
                 let row = `<tr><td class="time-col">${time}</td>`;
                 for(let i=0; i<6; i++) {
                     const slot = weekData[i].find(s => s.time === time);
-                    let d = new Date(monday); d.setDate(d.getDate() + i);
-                    
                     let cellClass = '';
                     let content = '';
 
                     if (slot && slot.patient_name) {
                         content = `${slot.patient_name}<br><small>${slot.part || ''}</small>`;
-                        // 件数をカウント
                         dailyCounts[i]++;
-                        
-                        // 撮影済み判定（ピンク）
+                        // ステータスが完了(done)ならピンク
                         if (slot.status === 'done' || slot.status === '完了') {
                             cellClass = 'class="done-past"';
                         }
@@ -110,9 +103,8 @@
                 bRows.innerHTML += row + "</tr>";
             });
 
-            // 合計行の書き出し
             dailyCounts.forEach(count => {
-                tRow.innerHTML += `<td>${count > 0 ? count + ' 件' : '-'}</td>`;
+                tRow.innerHTML += `<td>${count > 0 ? count + ' 件' : '0 件'}</td>`;
             });
         }
 
