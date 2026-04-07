@@ -4,20 +4,28 @@
     <meta charset="UTF-8">
     <title>MRI 1週間予約表（A4横）</title>
     <style>
-        @page { size: A4 landscape; margin: 8mm; }
+        @page { size: A4 landscape; margin: 5mm; } /* 余白をさらに狭く */
         body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
-        
-        /* table-layout: fixed を維持しつつ、幅を厳格に管理 */
         table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         
-        th { border: 1px solid #000; background: #eee; height: 30px; font-size: 11px; }
-        .time-col { width: 50px; font-weight: bold; }
+        th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
+        .time-col { width: 40px; font-weight: bold; }
         
-        /* 全て中央揃え */
-        td { border: 1px solid #000; padding: 2px; text-align: center; height: 32px; vertical-align: middle; word-break: break-all; }
+        /* paddingを0にして横幅を稼ぐ */
+        td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
         
-        .name-cell { font-weight: bold; font-size: 10px; }
-        .part-cell { font-size: 9px; color: #333; }
+        /* 氏名：少し小さくして改行を防ぐ */
+        .name-cell { font-weight: bold; font-size: 10px; overflow: hidden; white-space: nowrap; }
+        
+        /* 部位：10pxの太字、かつ絶対に改行させない */
+        .part-cell { 
+            font-size: 10px; 
+            color: #000; 
+            font-weight: bold; 
+            overflow: hidden; 
+            white-space: nowrap; 
+            text-overflow: clip; 
+        }
 
         .done-past { 
             background-color: #ffcccc !important; 
@@ -25,8 +33,8 @@
             print-color-adjust: exact;
         }
 
-        .total-row { background-color: #f8f9fa; font-weight: bold; height: 30px; }
-        .total-label { text-align: right; padding-right: 10px; }
+        .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
+        .total-label { text-align: right; padding-right: 5px; }
 
         .no-print { margin-bottom: 10px; }
         @media print { .no-print { display: none; } }
@@ -45,8 +53,7 @@
             <tr id="headerRow">
                 <th class="time-col" rowspan="2">時間</th>
             </tr>
-            <tr id="subHeaderRow">
-                </tr>
+            <tr id="subHeaderRow"></tr>
         </thead>
         <tbody id="bodyRows"></tbody>
         <tfoot>
@@ -82,10 +89,8 @@
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
                 hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                
-                // 【ここが決め手】%指定をさらに極端にし、合計が100%に収まるように調整
-                // 1日あたり約15%の中で、氏名10%：部位5% に配分
-                shRow.innerHTML += `<th style="width: 10.5%;">氏名</th><th style="width: 5.5%;">部位</th>`;
+                // 比率を極限まで調整（氏名2:部位1に近い比率）
+                shRow.innerHTML += `<th style="width: 11%;">氏名</th><th style="width: 5%;">部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
