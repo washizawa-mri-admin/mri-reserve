@@ -77,7 +77,10 @@
 
     const times = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
     const parts = ["頚椎","胸椎","腰椎","肩","肘","手","股関節","大腿","膝","下腿","足関節"];
-    let curId, curP = "";
+    
+    let curId = null;
+    let curP = "";      // 部位（膝、腰椎など）
+    let curSide = "";   // 左右（左、右、なし）
 
     function loadWeek() {
         const header = document.getElementById("dateHeader");
@@ -124,15 +127,39 @@
         loadWeek();
     }
 
+    // ★左右を選択する関数を追加
+    function setSide(side) {
+        curSide = side;
+        document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
+        if(side === '左') document.getElementById('side-L').classList.add('active');
+        else if(side === '右') document.getElementById('side-R').classList.add('active');
+        else document.getElementById('side-N').classList.add('active');
+    }
+
     function openModal(id, time, name, pid, part) {
-        curId = id; curP = part;
+        curId = id; 
+        curP = "";     // リセット
+        curSide = "";  // リセット
+        
         document.getElementById('mTitle').innerText = time + " 予約登録";
         document.getElementById('pId').value = pid;
         document.getElementById('pName').value = name;
-        document.querySelectorAll('.btn-opt').forEach(b => {
-            b.classList.remove('active');
-            if(b.innerText === part) b.classList.add('active');
-        });
+
+        // ボタンの選択状態をクリア
+        document.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
+        setSide(''); // 「なし」をアクティブに
+
+        // すでに部位が登録されている場合、ボタンを光らせる（簡易判定）
+        if(part) {
+            if(part.startsWith('左')) { setSide('左'); curP = part.replace('左',''); }
+            else if(part.startsWith('右')) { setSide('右'); curP = part.replace('右',''); }
+            else { curP = part; }
+            
+            document.querySelectorAll('#partsGrid .btn-opt').forEach(b => {
+                if(b.innerText === curP) b.classList.add('active');
+            });
+        }
+
         document.getElementById('modal').style.display = 'flex';
     }
 
@@ -142,10 +169,14 @@
         const name = document.getElementById('pName').value;
         const pid = document.getElementById('pId').value;
         if (!name && !pid) return alert("IDまたは氏名を入力してください");
+
+        // ★左右と部位を合体させる
+        const finalPart = curSide + curP;
+
         const res = await fetch("/api/reserve", {
             method: "POST",
             headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({ id: curId, patient_name: name, patient_id: pid, part: curP })
+            body: JSON.stringify({ id: curId, patient_name: name, patient_id: pid, part: finalPart })
         });
         if(res.ok) { closeModal(); loadWeek(); } else { alert("保存に失敗しました"); }
     }
@@ -157,16 +188,17 @@
             headers: {"Content-Type":"application/json"},
             body: JSON.stringify({ id: curId, patient_name: "", patient_id: "", part: "", status: "" })
         });
-        if(res.ok) { curP = ""; closeModal(); loadWeek(); } else { alert("消去に失敗しました"); }
+        if(res.ok) { closeModal(); loadWeek(); } else { alert("消去に失敗しました"); }
     }
 
+    // 部位ボタンの生成
     const pGrid = document.getElementById("partsGrid");
     parts.forEach(p => {
         const b = document.createElement("div");
         b.className = "btn-opt";
         b.innerText = p;
         b.onclick = () => {
-            document.querySelectorAll('.btn-opt').forEach(x => x.classList.remove('active'));
+            document.querySelectorAll('#partsGrid .btn-opt').forEach(x => x.classList.remove('active'));
             b.classList.add('active');
             curP = p;
         };
@@ -175,5 +207,6 @@
 
     loadWeek();
 </script>
+
 </body>
 </html>
