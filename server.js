@@ -96,14 +96,14 @@ app.post('/api/reserve', async (req, res) => {
     res.json({ success: true });
 });
 
-// ★★★ 読影ボタン(requestRemote)用の受け皿を追加 ★★★
+// 読影ボタン(requestRemote)が押された時の処理
 app.post("/api/remote", async (req, res) => {
   const { id, patient_name, patient_id } = req.body;
   
   const { error } = await supabase
     .from('slots')
     .update({ 
-      is_remote: 1,           // 読影フラグを立てる
+      is_remote: 1, // 読影フラグを「出す」にする
       patient_name: patient_name || null,
       patient_id: patient_id || null
     })
