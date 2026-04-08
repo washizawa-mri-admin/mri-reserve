@@ -42,18 +42,31 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★★★ ここが修正ポイント：部位(part)を保存できるように統合 ★★★
+// ★★★ 全ページ共通の更新窓口（1つに集約しました） ★★★
 app.post("/api/update", async (req, res) => {
-  const { id, status, doctor, patient_name, patient_id, part } = req.body;
+  const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
   
   let updateData = {};
   if (doctor !== undefined) updateData.doctor = doctor;
   if (status !== undefined) updateData.status = status;
   if (patient_name !== undefined) updateData.patient_name = patient_name;
   if (patient_id !== undefined) updateData.patient_id = patient_id;
-  if (part !== undefined) updateData.part = part; // 部位を保存対象に追加
+  if (part !== undefined) updateData.part = part;
+  if (is_remote !== undefined) updateData.is_remote = is_remote; // 読影フラグも保存可能に
   
   const { error } = await supabase.from('slots').update(updateData).eq('id', id);
+  if (error) return res.status(500).json(error);
+  res.json({ status: "ok" });
+});
+
+// フロントからの「読影」ボタン専用の窓口（念のため残しておくと確実です）
+app.post("/api/remote", async (req, res) => {
+  const { id, patient_name, patient_id } = req.body;
+  const { error } = await supabase.from('slots').update({ 
+    is_remote: 1, 
+    patient_name: patient_name || null,
+    patient_id: patient_id || null
+  }).eq('id', id);
   if (error) return res.status(500).json(error);
   res.json({ status: "ok" });
 });
@@ -71,7 +84,6 @@ app.post("/api/start", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★★★ 枠を消さずに中身だけ消す修正 ★★★
 app.post("/api/delete", async (req, res) => {
   await supabase.from('slots').update({
     patient_id: null,
@@ -90,21 +102,10 @@ app.get("/api/report/all", async (req, res) => {
     res.json((data || []).map(r => ({ date: r.date, doctor: r.doctor || "未選択", is_remote: r.is_remote ? 1 : 0, count: (r.is_extra > 1) ? r.is_extra : 1 })));
 });
 
-// 全ページ共通の更新窓口（1つに集約！）
-app.post("/api/update", async (req, res) => {
-  const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
-  
-  let updateData = {};
-  if (doctor !== undefined) updateData.doctor = doctor;
-  if (status !== undefined) updateData.status = status;
-  if (patient_name !== undefined) updateData.patient_name = patient_name;
-  if (patient_id !== undefined) updateData.patient_id = patient_id;
-  if (part !== undefined) updateData.part = part;
-  if (is_remote !== undefined) updateData.is_remote = is_remote; // 読影フラグもOK
-  
-  const { error } = await supabase.from('slots').update(updateData).eq('id', id);
-  if (error) return res.status(500).json(error);
-  res.json({ status: "ok" });
+app.post('/api/reserve', async (req, res) => {
+    const { id, patient_name, part, patient_id } = req.body;
+    await supabase.from('slots').update({ patient_name, part, patient_id: patient_id || "", status: 'waiting' }).eq('id', id);
+    res.json({ success: true });
 });
 
 app.get('/api/search', async (req, res) => {
