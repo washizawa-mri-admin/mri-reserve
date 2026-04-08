@@ -90,14 +90,8 @@ app.get("/api/report/all", async (req, res) => {
     res.json((data || []).map(r => ({ date: r.date, doctor: r.doctor || "未選択", is_remote: r.is_remote ? 1 : 0, count: (r.is_extra > 1) ? r.is_extra : 1 })));
 });
 
-app.post('/api/reserve', async (req, res) => {
-    const { id, patient_name, part, patient_id } = req.body;
-    await supabase.from('slots').update({ patient_name, part, patient_id: patient_id || "", status: 'waiting' }).eq('id', id);
-    res.json({ success: true });
-});
-
+// 全ページ共通の更新窓口（1つに集約！）
 app.post("/api/update", async (req, res) => {
-  // is_remote も受け取れるように追加
   const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
   
   let updateData = {};
@@ -106,7 +100,7 @@ app.post("/api/update", async (req, res) => {
   if (patient_name !== undefined) updateData.patient_name = patient_name;
   if (patient_id !== undefined) updateData.patient_id = patient_id;
   if (part !== undefined) updateData.part = part;
-  if (is_remote !== undefined) updateData.is_remote = is_remote; // ★ここを追加！
+  if (is_remote !== undefined) updateData.is_remote = is_remote; // 読影フラグもOK
   
   const { error } = await supabase.from('slots').update(updateData).eq('id', id);
   if (error) return res.status(500).json(error);
