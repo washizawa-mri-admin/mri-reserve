@@ -204,7 +204,7 @@ function startWithOption(id) {
 }
 
 function finishScan(id) { 
-    const name = document.getElementById(`name-${id}`)?.value || "受診済";
+    const name = document.getElementById(`name-${id}`)?.value || "";
     const pid = document.getElementById(`id-${id}`)?.value || "";
     fetch("/api/update", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
@@ -212,11 +212,17 @@ function finishScan(id) {
     }).then(load); 
 }
 
-async function save() {
-    const name = document.getElementById('pName').value;
-    const pid = document.getElementById('pId').value;
-    const finalPart = curSide + curP;
-
+// 読影ボタン：promptを出さず、入力欄の名前・IDで即座に更新する
+function requestRemote(id) {
+    const name = document.getElementById(`name-${id}`)?.value || "";
+    const pid = document.getElementById(`id-${id}`)?.value || "";
+    fetch("/api/remote", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({id, patient_id: pid, patient_name: name}) 
+    }).then(load);
+}
+    
 function deleteSlot(id) { 
     if(confirm("入力内容をリセットして空枠に戻しますか？")) {
         fetch("/api/delete", { 
