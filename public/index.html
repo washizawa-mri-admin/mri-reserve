@@ -213,33 +213,14 @@ function finishScan(id) {
 }
 
 function requestRemote(id) {
-    // 1. 確実に値を取得する
-    const nameInput = document.getElementById(`name-${id}`);
-    const idInput = document.getElementById(`id-${id}`);
+    const name = document.getElementById(`name-${id}`)?.value || "";
+    const pid = document.getElementById(`id-${id}`)?.value || "";
     
-    const name = nameInput ? nameInput.value : "";
-    const pid = idInput ? idInput.value : "";
-    
-    // 2. サーバーに送信（順番を確実に合わせる）
     fetch("/api/remote", { 
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
-        body: JSON.stringify({
-            id: id, 
-            patient_id: pid, 
-            patient_name: name
-        }) 
-    })
-    .then(res => {
-        if (!res.ok) {
-            alert("サーバーエラーが発生しました");
-        }
-        load(); // 画面を更新
-    })
-    .catch(err => {
-        console.error("通信エラー:", err);
-        alert("通信に失敗しました");
-    });
+        body: JSON.stringify({id, patient_id: pid, patient_name: name}) 
+    }).then(load);
 }
     
 function deleteSlot(id) { 
