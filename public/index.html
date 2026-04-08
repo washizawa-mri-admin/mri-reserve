@@ -195,8 +195,8 @@ function updateWithOption(id, status) {
 }
 
 function startWithOption(id) {
-    const name = document.getElementById(`name-${id}`)?.value;
-    const pid = document.getElementById(`id-${id}`)?.value;
+    const name = document.getElementById(`name-${id}`)?.value || "";
+    const pid = document.getElementById(`id-${id}`)?.value || "";
     fetch("/api/start", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, patient_name: name, patient_id: pid}) 
@@ -212,7 +212,6 @@ function finishScan(id) {
     }).then(load); 
 }
 
-// 読影ボタン：promptを出さず、入力欄の名前・IDで即座に更新する
 function requestRemote(id) {
     const name = document.getElementById(`name-${id}`)?.value || "";
     const pid = document.getElementById(`id-${id}`)?.value || "";
@@ -222,7 +221,7 @@ function requestRemote(id) {
         body: JSON.stringify({id, patient_id: pid, patient_name: name}) 
     }).then(load);
 }
-    
+
 function deleteSlot(id) { 
     if(confirm("入力内容をリセットして空枠に戻しますか？")) {
         fetch("/api/delete", { 
@@ -232,7 +231,7 @@ function deleteSlot(id) {
         }).then(load); 
     }
 }
-
+    
 function addSlot() {
     fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(load);
 }
