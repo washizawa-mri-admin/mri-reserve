@@ -96,19 +96,19 @@ app.post('/api/reserve', async (req, res) => {
     res.json({ success: true });
 });
 
-// 読影ボタン(requestRemote)が押された時の処理
-app.post("/api/remote", async (req, res) => {
-  const { id, patient_name, patient_id } = req.body;
+app.post("/api/update", async (req, res) => {
+  // is_remote も受け取れるように追加
+  const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
   
-  const { error } = await supabase
-    .from('slots')
-    .update({ 
-      is_remote: 1, // 読影フラグを「出す」にする
-      patient_name: patient_name || null,
-      patient_id: patient_id || null
-    })
-    .eq('id', id);
-
+  let updateData = {};
+  if (doctor !== undefined) updateData.doctor = doctor;
+  if (status !== undefined) updateData.status = status;
+  if (patient_name !== undefined) updateData.patient_name = patient_name;
+  if (patient_id !== undefined) updateData.patient_id = patient_id;
+  if (part !== undefined) updateData.part = part;
+  if (is_remote !== undefined) updateData.is_remote = is_remote; // ★ここを追加！
+  
+  const { error } = await supabase.from('slots').update(updateData).eq('id', id);
   if (error) return res.status(500).json(error);
   res.json({ status: "ok" });
 });
