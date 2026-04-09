@@ -8,30 +8,25 @@
         body { font-family: sans-serif; background: #f0f2f5; padding: 10px; margin: 0; }
         .container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #333; margin: 0 0 10px 0; font-size: 1.2em; }
-        
-        /* コントロール周り */
         .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 5px; }
         .btn-nav { padding: 8px 12px; cursor: pointer; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; white-space: nowrap; }
         .btn-home { text-decoration: none; background: #666; color: white; padding: 8px 12px; border-radius: 4px; font-size: 0.85em; }
-        
-        /* ★爆速ジャンプ用：日付選択インプット */
         .date-picker-wrapper { display: flex; align-items: center; background: #eee; padding: 2px 10px; border-radius: 20px; }
         #dateJump { border: none; background: transparent; font-weight: bold; font-size: 1em; font-family: inherit; cursor: pointer; padding: 5px; }
-
-        /* PC用テーブル設定 */
         .table-wrapper { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 800px; }
         th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 0.85em; }
         th { background: #e9ecef; position: sticky; top: 0; }
         .time-col { width: 60px; background: #f8f9fa; font-weight: bold; }
         .slot { cursor: pointer; height: 55px; vertical-align: top; transition: 0.2s; overflow: hidden; }
+        
+        /* 予約・検査中・終了すべてに色がつくように設定 */
         .booked { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        
         .patient-info { font-weight: bold; font-size: 0.9em; display: block; color: #2e7d32; }
         .id-info { font-size: 0.75em; color: #666; display: block; }
         .part-info { background: #4caf50; color: white; font-size: 0.75em; padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px; }
         .empty { color: #ccc; font-size: 0.8em; line-height: 45px; }
-
-        /* モーダル */
         #modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000; }
         .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; box-sizing: border-box; }
         .input-group { margin-bottom: 10px; }
@@ -40,23 +35,15 @@
         .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
         .btn-opt { padding: 10px 5px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
         .btn-opt.active, .side-btn.active { background: #28a745; color: white; border-color: #28a745; }
-
-        /* ★スマホ表示（1日リスト）の切り替え設定 */
-        #mobileList { display: none; } /* デフォルトは非表示 */
-
+        #mobileList { display: none; }
         @media (max-width: 600px) {
-            .table-wrapper { display: none; } /* テーブルを隠す */
-            #mobileList { display: block; }    /* リストを出す */
-            #weekRangeDisplay { display: none; } /* 「〜」の文字を消す */
+            .table-wrapper { display: none; }
+            #mobileList { display: block; }
+            #weekRangeDisplay { display: none; }
             .btn-nav { font-size: 0.8em; padding: 8px; }
             #modal { align-items: flex-start; padding-top: 30px; }
             .modal-content { max-height: 90vh; overflow-y: auto; }
-            
-            /* スマホ用1日リストの見た目 */
-            .mobile-slot { 
-                display: flex; align-items: center; background: white; 
-                border: 1px solid #ddd; margin-bottom: 8px; padding: 12px; border-radius: 8px;
-            }
+            .mobile-slot { display: flex; align-items: center; background: white; border: 1px solid #ddd; margin-bottom: 8px; padding: 12px; border-radius: 8px; }
             .mobile-time { width: 60px; font-weight: bold; border-right: 2px solid #eee; margin-right: 15px; }
             .mobile-content { flex-grow: 1; }
             .mobile-slot.booked { border-left: 6px solid #4caf50; background: #fafffa; }
@@ -112,12 +99,11 @@
 </div>
 
 <script>
-    let currentFocusDate = new Date(); // 現在表示の基準日
+    let currentFocusDate = new Date(); 
     const times = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
     const parts = ["頚椎","胸椎","腰椎","肩","肘","手","股関節","大腿","膝","下腿","足関節"];
     let curId = null, curP = "", curSide = "";
 
-    // 初期化：本日の日付をカレンダーに入れる
     document.getElementById('dateJump').value = currentFocusDate.toISOString().split('T')[0];
 
     function isMobile() { return window.innerWidth <= 600; }
@@ -145,7 +131,6 @@
         }
     }
 
-    // PC用：週間テーブル表示
     async function loadWeekTable() {
         const monday = new Date(currentFocusDate);
         const day = monday.getDay() || 7;
@@ -171,9 +156,11 @@
             dates.forEach((dateStr, colIndex) => {
                 const slot = weekData[colIndex].find(s => s.time === t);
                 if (slot) {
+                    // ★重要：ステータスを見て色を判定する
+                    const isBooked = ["waiting", "scanning", "done"].includes(slot.status);
                     const name = slot.patient_name || "";
-                    row += `<td class="slot ${name ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${slot.patient_id || ''}', '${slot.part || ''}')">
-                                ${name ? `<span class="id-info">${slot.patient_id}</span><span class="patient-info">${name}</span><span class="part-info">${slot.part}</span>` : '<span class="empty">空き</span>'}
+                    row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${slot.patient_id || ''}', '${slot.part || ''}')">
+                                ${isBooked ? `<span class="id-info">${slot.patient_id}</span><span class="patient-info">${name}</span><span class="part-info">${slot.part}</span>` : '<span class="empty">空き</span>'}
                             </td>`;
                 } else { row += `<td style="background:#f0f0f0;">-</td>`; }
             });
@@ -181,33 +168,33 @@
         });
     }
 
-    // スマホ用：1日リスト表示
     async function loadDailyList() {
         const listDiv = document.getElementById("mobileList");
         const dateStr = currentFocusDate.toISOString().split('T')[0];
         const res = await fetch(`/api/slots?date=${dateStr}`);
         const data = await res.json();
         
-        listDiv.innerHTML = `<p style="text-align:center; font-weight:bold; color:#666;">${currentFocusDate.getMonth()+1}月${currentFocusDate.getDate()}日の空き状況</p>`;
+        listDiv.innerHTML = `<p style="text-align:center; font-weight:bold; color:#666;">${currentFocusDate.getMonth()+1}月${currentFocusDate.getDate()}日の状況</p>`;
         
         times.forEach(t => {
             const slot = data.find(s => s.time === t);
             if (!slot) return;
+            // ★重要：ステータスを見て色を判定する
+            const isBooked = ["waiting", "scanning", "done"].includes(slot.status);
             const name = slot.patient_name || "";
             const div = document.createElement("div");
-            div.className = `mobile-slot ${name ? 'booked' : ''}`;
+            div.className = `mobile-slot ${isBooked ? 'booked' : ''}`;
             div.onclick = () => openModal(slot.id, slot.time, name, slot.patient_id || '', slot.part || '');
             div.innerHTML = `
                 <div class="mobile-time">${t}</div>
                 <div class="mobile-content">
-                    ${name ? `<div><small>${slot.patient_id}</small></div><strong>${name}</strong> <span class="part-info">${slot.part}</span>` : '<span style="color:#ccc;">空き枠</span>'}
+                    ${isBooked ? `<div><small>${slot.patient_id}</small></div><strong>${name}</strong> <span class="part-info">${slot.part}</span>` : '<span style="color:#ccc;">空き枠</span>'}
                 </div>
             `;
             listDiv.appendChild(div);
         });
     }
 
-    // --- 以下、モーダル関連のロジックは以前のものを維持 ---
     function setSide(side) {
         curSide = side;
         document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
@@ -250,15 +237,15 @@
 
     async function deleteReservation() {
         if(!confirm("予約を完全に消去しますか？")) return;
-        const res = await fetch("/api/reserve", {
+        // ★確実にステータスをリセットする窓口を叩く
+        const res = await fetch("/api/delete", {
             method: "POST",
             headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({ id: curId, patient_name: "", patient_id: "", part: "", status: "" })
+            body: JSON.stringify({ id: curId })
         });
         if(res.ok) { closeModal(); refresh(); }
     }
 
-    // 部位ボタン生成
     const pGrid = document.getElementById("partsGrid");
     parts.forEach(p => {
         const b = document.createElement("div");
