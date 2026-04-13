@@ -2,129 +2,125 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドクター別・日別集計一覧</title>
+    <title>ドクター別撮影件数（印刷用）</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .nav-btn { padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; }
+        /* A4縦に最適化 */
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; padding: 10px; background: #fff; color: #333; font-size: 11px; line-height: 1.2; }
+        .container { max-width: 800px; margin: auto; }
         
-        /* 月選択のスタイル */
-        .month-selector { margin-bottom: 20px; padding: 10px; background: #e9ecef; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
-        select { padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; }
+        .no-print { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; }
+        @media print { .no-print { display: none; } body { padding: 0; } }
 
-        /* 横並びテーブルのスタイル */
-        .table-wrapper { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 600px; }
-        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: center; }
-        th { background: #6c757d; color: white; white-space: nowrap; }
-        .date-col { background: #f8f9fa; font-weight: bold; width: 120px; }
+        h1 { font-size: 16px; margin: 0; text-align: center; }
+        
+        .month-selector { font-size: 12px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        th, td { border: 1px solid #000; padding: 4px 2px; text-align: center; overflow: hidden; }
+        
+        /* ヘッダーの色を少し薄くして文字を見やすく */
+        th { background: #eee; font-size: 10px; }
+        
+        .date-col { width: 45px; font-weight: bold; background: #f9f9f9; }
+        .total-col { width: 50px; font-weight: bold; background: #f9f9f9; }
+        
         .today-row { background: #fff9c4 !important; }
-        .total-row { background: #e8f5e9; font-weight: bold; }
-        .count-cell { font-size: 1.1em; }
+        .total-row { background: #eee; font-weight: bold; }
+        
+        .count-cell { color: #000; }
+        .zero { color: #ccc; } /* 0件は薄くして目立たせない */
+
+        .nav-btn { padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="nav-header">
-        <a href="index.html" class="nav-btn">⬅ 予約一覧に戻る</a>
-        <h1>ドクター別撮影件数</h1>
+    <div class="no-print">
+        <a href="index.html" class="nav-btn">⬅ 戻る</a>
+        <div class="month-selector">
+            表示月: <input type="month" id="monthPicker" onchange="renderStats()">
+            <button onclick="window.print()" style="margin-left:10px; cursor:pointer;">🖨️ A4印刷</button>
+        </div>
     </div>
 
-    <div class="month-selector">
-        <label for="monthPicker">表示月を選択:</label>
-        <input type="month" id="monthPicker" onchange="renderStats()">
-    </div>
+    <h1 id="title-text">MRI撮影件数 集計表</h1>
 
-    <div class="table-wrapper">
-        <table id="statsTable">
-            <thead>
-                <tr id="header-row">
-                    </tr>
-            </thead>
-            <tbody id="stats-body">
-                </tbody>
-        </table>
-    </div>
+    <table>
+        <thead>
+            <tr id="header-row"></tr>
+        </thead>
+        <tbody id="stats-body"></tbody>
+    </table>
 </div>
 
 <script>
+    // 指定された先生の順番（画像通り）
+    const doctorOrder = ["鷲澤", "永野", "鷲澤匠", "中村", "石橋", "木内", "白石", "小谷野", "鈴木"];
     let allData = [];
 
-    // 今日の年月をデフォルトセット
     const now = new Date();
-    const defaultMonth = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
-    document.getElementById('monthPicker').value = defaultMonth;
+    document.getElementById('monthPicker').value = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
 
     async function loadData() {
         try {
             const res = await fetch('/api/report/doctors');
             allData = await res.json();
             renderStats();
-        } catch (e) {
-            console.error("データ取得エラー:", e);
-        }
+        } catch (e) { console.error(e); }
     }
 
     function renderStats() {
-        const selectedMonth = document.getElementById('monthPicker').value; // "2026-04"
-        const tbody = document.getElementById('stats-body');
-        const hrow = document.getElementById('header-row');
-        
-        // 1. その月のデータだけ抽出
-        const filteredData = allData.filter(d => d.date.startsWith(selectedMonth));
-
-        // 2. ユニークなドクター一覧を作成
-        const doctorList = [...new Set(allData.map(d => d.doctor))].sort();
-
-        // ヘッダー作成
-        hrow.innerHTML = `<th class="date-col">日付</th>` + 
-                         doctorList.map(dr => `<th>${dr} 先生</th>`).join('') + 
-                         `<th>日別合計</th>`;
-
-        // 3. その月の日数を取得
+        const selectedMonth = document.getElementById('monthPicker').value;
         const [year, month] = selectedMonth.split('-').map(Number);
-        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        document.getElementById('title-text').innerText = `${year}年${month}月 MRI撮影件数 集計表`;
+        
+        // ヘッダー作成（指定の順番通り）
+        const hrow = document.getElementById('header-row');
+        hrow.innerHTML = `<th class="date-col">日付</th>` + 
+                         doctorOrder.map(dr => `<th>${dr}</th>`).join('') + 
+                         `<th class="total-col">合計</th>`;
 
+        const filteredData = allData.filter(d => d.date.startsWith(selectedMonth));
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
         let tableHtml = "";
-        let doctorTotals = {}; // ドクターごとの月間合計
-        doctorList.forEach(dr => doctorTotals[dr] = 0);
+        let drMonthlyTotals = {};
+        doctorOrder.forEach(dr => drMonthlyTotals[dr] = 0);
         let grandTotal = 0;
 
-        // 4. 1日から末日までループ
         for (let i = 1; i <= daysInMonth; i++) {
             const dateStr = `${selectedMonth}-${String(i).padStart(2, '0')}`;
             const isToday = dateStr === new Date().toISOString().split('T')[0];
             
-            let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
             let dayTotal = 0;
+            let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
 
-            doctorList.forEach(dr => {
+            doctorOrder.forEach(dr => {
                 const record = filteredData.find(d => d.date === dateStr && d.doctor === dr);
                 const count = record ? record.count : 0;
-                rowHtml += `<td class="count-cell">${count > 0 ? count : '-'}</td>`;
+                rowHtml += `<td class="${count === 0 ? 'zero' : 'count-cell'}">${count}</td>`;
                 dayTotal += count;
-                doctorTotals[dr] += count;
+                drMonthlyTotals[dr] += count;
             });
 
-            rowHtml += `<td>${dayTotal}</td></tr>`;
+            rowHtml += `<td class="total-col">${dayTotal}</td></tr>`;
             tableHtml += rowHtml;
             grandTotal += dayTotal;
         }
 
-        // 5. 一番下の合計行
+        // 合計行
         let totalRowHtml = `<tr class="total-row"><td class="date-col">合計</td>`;
-        doctorList.forEach(dr => {
-            totalRowHtml += `<td>${doctorTotals[dr]}</td>`;
+        doctorOrder.forEach(dr => {
+            totalRowHtml += `<td>${drMonthlyTotals[dr]}</td>`;
         });
-        totalRowHtml += `<td>${grandTotal}</td></tr>`;
+        totalRowHtml += `<td class="total-col">${grandTotal}</td></tr>`;
         
-        tbody.innerHTML = tableHtml + totalRowHtml;
+        document.getElementById('stats-body').innerHTML = tableHtml + totalRowHtml;
     }
 
     window.onload = loadData;
-    setInterval(loadData, 60000); // 1分更新
 </script>
 
 </body>
