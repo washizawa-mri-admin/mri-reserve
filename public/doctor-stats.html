@@ -2,45 +2,64 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ドクター別集計</title>
+    <title>ドクター別 統計レポート</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
-        th { background: #eee; }
+        body { font-family: sans-serif; padding: 20px; background: #f8f9fa; color: #333; }
+        .container { max-width: 900px; margin: auto; }
         .nav-btn {
-            padding: 10px 20px;
+            padding: 10px 18px;
             cursor: pointer;
             background-color: #007bff;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             text-decoration: none;
             display: inline-block;
+            margin-bottom: 20px;
+            font-weight: bold;
         }
+        h2 { border-left: 5px solid #28a745; padding-left: 10px; margin-top: 30px; }
+        
+        /* 集計カードのスタイル */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .doctor-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        .doctor-card .name { display: block; font-size: 0.9em; color: #666; }
+        .doctor-card .count { display: block; font-size: 1.8em; font-weight: bold; color: #28a745; }
+
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
+        th { background: #6c757d; color: white; }
+        tr:nth-child(even) { background: #f2f2f2; }
+        .today-row { background: #fff9c4 !important; font-weight: bold; }
     </style>
 </head>
 <body>
 
+<div class="container">
     <a href="index.html" class="nav-btn">⬅ 予約一覧に戻る</a>
 
-    <h1>ドクター別集計一覧</h1>
-    
-    <table id="target">
-        <thead>
-            <tr><th>日付</th><th>ドクター名</th><th>撮影件数</th></tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <h1 id="month-title">今月のドクター別集計</h1>
+    <div id="monthly-summary" class="summary-grid">
+        </div>
 
-    <script>
-        fetch('/api/report/doctors')
-            .then(res => res.json())
-            .then(data => {
-                document.querySelector('#target tbody').innerHTML = data.map(r => 
-                    `<tr><td>${r.date}</td><td>${r.doctor} 先生</td><td><strong>${r.count}</strong> 件</td></tr>`
-                ).join('');
-            });
-    </script>
-</body>
-</html>
+    <h2>直近1週間の詳細</h2>
+    <table id="weekly-table">
+        <thead>
+            <tr>
+                <th>日付</th>
+                <th>ドクター名</th>
+                <th>撮影件数</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+</div>
+
+<script>
+    async function loadStats() {
+        const res = await fetch('/api/report/doctors');
+        const data = await res.json();
+        
+        const now = new Date();
+        const currentMonth = now.toISOString().substring
