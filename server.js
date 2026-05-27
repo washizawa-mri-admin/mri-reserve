@@ -8,10 +8,54 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Basic認証とミドルウェア設定
-app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
 app.use(express.json());
 app.use(express.static("public"));
+
+// ==========================================
+// 🛡️ 追加：IPチェック（門番）処理
+// ==========================================
+app.use(async (req, res, next) => {
+    // IP更新用APIへのアクセスだけは、ブロックせずに通す（そうしないと更新できないため）
+    if (req.path === '/api/update-ip') return next();
+
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+
+    // ローカル環境（自分のPCでの開発中）は常に許可
+    if (clientIp.includes('::1') || clientIp.includes('127.0.0.1')) return next();
+
+    // Supabaseから今の「許可IP」を取得
+    const { data } = await supabase.from('settings').select('value').eq('key', 'allowed_ip').single();
+    const allowedIp = data?.value;
+
+    // 判定：一致すればOK、してなければブロック
+    if (allowedIp && clientIp.includes(allowedIp)) {
+        next();
+    } else {
+        res.status(403).send(`
+            <div style="text-align:center; padding-top:50px; font-family:sans-serif;">
+                <h1>院内ネットワーク外からのアクセスです</h1>
+                <p>このシステムはセキュリティのため、院内Wi-Fiからのみ閲覧可能です。</p>
+                <p style="color:red;">現在のあなたのIP: <b>${clientIp}</b></p>
+                <hr>
+                <p>IPが変わった場合は、許可された端末から更新ボタンを押すか、<br>小野さんにこのIPを伝えてください。</p>
+            </div>
+        `);
+    }
+});
+
+// ==========================================
+// 🚀 追加：IP更新用API
+// ==========================================
+app.post('/api/update-ip', async (req, res) => {
+    const newIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+    const { error } = await supabase.from('settings').upsert({ key: 'allowed_ip', value: newIp });
+    if (error) return res.status(500).json(error);
+    res.json({ success: true, updatedIp: newIp });
+});
+
+// pass認証（IPチェックを通過した後に実行される）
+app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
+
 
 // スロットの自動生成
 async function ensureSlotsExist(date) {
@@ -97,7 +141,7 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★追加した集計API: ドクター別の撮影一覧
+// 集計API: ドクター別の撮影一覧
 app.get("/api/report/doctors", async (req, res) => {
   const { data, error } = await supabase
     .from('slots')
