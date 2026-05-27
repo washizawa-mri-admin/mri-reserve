@@ -27,8 +27,9 @@ app.use(async (req, res, next) => {
     const { data } = await supabase.from('settings').select('value').eq('key', 'allowed_ip').single();
     const allowedIp = data?.value;
 
-    // 判定：一致すれば通過、違っていればエラー画面（復活ボタン付き）を出す
-    if (allowedIp && clientIp.includes(allowedIp)) {
+    // 判定：許可IPがちゃんと存在して、かつ現在のIPが含まれている場合だけ通過！
+    //（データが取れない、またはIPが違えば確実にelseに進んで赤い画面になります）
+    if (allowedIp && allowedIp.trim() !== "" && clientIp.includes(allowedIp)) {
         next();
     } else {
         // ➔ 締め出された時専用のエラー画面（ここにパスワード付きの復活ボタンを埋め込んであります）
