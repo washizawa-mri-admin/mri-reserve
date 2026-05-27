@@ -155,7 +155,7 @@ function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
         const list = document.getElementById("list"); 
         
-        // 💡 1. 画面上のすべての入力欄から、今スタッフが打ち込んでいる文字をまるごと一時記憶する
+        // 💡 1. 画面上のすべての入力欄から、文字をまるごと一時記憶する
         const currentInputs = {};
         data.forEach(item => {
             const idInput = document.getElementById(`id-${item.id}`);
@@ -166,8 +166,16 @@ function load() {
             };
         });
 
-        // 💡 2. 現在どこの入力欄にカーソルがあるかを記憶
-        const activeId = document.activeElement ? document.activeElement.id : null;
+        // 💡 2. 現在カーソルがある入力欄の「ID」と「カーソルの位置（数値）」を記憶する！
+        const activeElement = document.activeElement;
+        const activeId = activeElement ? activeElement.id : null;
+        let selectionStart = 0;
+        let selectionEnd = 0;
+
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+            selectionStart = activeElement.selectionStart;
+            selectionEnd = activeElement.selectionEnd;
+        }
 
         list.innerHTML = "";
         let counts = { waiting: 0, scanning: 0, done: 0 };
@@ -179,7 +187,7 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-            // 💡 3. データベースの値よりも、今スタッフが画面に入力している文字を最優先して表示する
+            // 💡 3. 画面に入力されている文字を最優先して表示
             const savedInput = currentInputs[item.id];
             const idValue = (savedInput && savedInput.idValue !== null) ? savedInput.idValue : (item.patient_id || "");
             const nameValue = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
@@ -208,9 +216,14 @@ function load() {
             list.appendChild(div);
         });
 
-        // 💡 4. 入力中だった場所にカーソルをピタッと戻す
+        // 💡 4. 入力中だった場所にカーソルを戻し、「位置」も寸分狂わず復元する！
         if (activeId && document.getElementById(activeId)) {
-            document.getElementById(activeId).focus();
+            const inputEl = document.getElementById(activeId);
+            inputEl.focus();
+            // カーソルの位置を上書きして戻す
+            if (inputEl.setSelectionRange) {
+                inputEl.setSelectionRange(selectionStart, selectionEnd);
+            }
         }
 
         document.getElementById("count-waiting").innerText = counts.waiting;
