@@ -155,9 +155,19 @@ function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
         const list = document.getElementById("list"); 
         
-        // 💡 現在どの入力欄にカーソルがあるか（アクティブか）を記憶しておく
+        // 💡 1. 画面上のすべての入力欄から、今スタッフが打ち込んでいる文字をまるごと一時記憶する
+        const currentInputs = {};
+        data.forEach(item => {
+            const idInput = document.getElementById(`id-${item.id}`);
+            const nameInput = document.getElementById(`name-${item.id}`);
+            currentInputs[item.id] = {
+                idValue: idInput ? idInput.value : null,
+                nameValue: nameInput ? nameInput.value : null
+            };
+        });
+
+        // 💡 2. 現在どこの入力欄にカーソルがあるかを記憶
         const activeId = document.activeElement ? document.activeElement.id : null;
-        const activeValue = activeId ? document.getElementById(activeId).value : null;
 
         list.innerHTML = "";
         let counts = { waiting: 0, scanning: 0, done: 0 };
@@ -169,8 +179,10 @@ function load() {
             const div = document.createElement("div");
             div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
             
-            const idValue = item.patient_id || "";
-            const nameValue = item.patient_name || "";
+            // 💡 3. データベースの値よりも、今スタッフが画面に入力している文字を最優先して表示する
+            const savedInput = currentInputs[item.id];
+            const idValue = (savedInput && savedInput.idValue !== null) ? savedInput.idValue : (item.patient_id || "");
+            const nameValue = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
             const partValue = item.part ? ` [${item.part}]` : "";
             
             div.innerHTML = `
@@ -196,11 +208,9 @@ function load() {
             list.appendChild(div);
         });
 
-        // 💡 画面が再描画された後、入力中だった場所にカーソルを戻し、打っていた文字も復元する！
+        // 💡 4. 入力中だった場所にカーソルをピタッと戻す
         if (activeId && document.getElementById(activeId)) {
-            const inputEl = document.getElementById(activeId);
-            inputEl.focus();
-            inputEl.value = activeValue; // 打っている途中の文字をキープ
+            document.getElementById(activeId).focus();
         }
 
         document.getElementById("count-waiting").innerText = counts.waiting;
