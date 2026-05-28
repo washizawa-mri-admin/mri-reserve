@@ -228,26 +228,29 @@ app.get("/api/report/doctors", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【完全解決版】永久に頭打ちにならないレポートAPI
+// 📊 【完全復活版】直近3カ年グラフ対応・頭打ちなしレポートAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
-        const currentYear = selMonth.split('-')[0];
+        const currentYear = parseInt(selMonth.split('-')[0]);
+        
+        // 💡 グラフで比較するために、選択された年の「2年前の1月1日」からデータをまとめて取得する！
+        // （例：2026年が選ばれていたら、2024-01-01 〜 2026-12-31 の3年間分）
+        const startYear = currentYear - 2;
 
-        // 💡 1,000件制限を突破するため、必要な列（列名だけ）を極限まで絞って超軽量で取得
-        // ※Supabaseの1000件制限を回避するため、データの塊ではなく「ただのリスト」として一気に吸い上げます
+        // 💡 3年分だと余裕で1000件を超えるため、.range(0, 99999) を指定して制限を強制突破！
         const { data, error } = await supabase
             .from('slots')
             .select('date, doctor, is_remote, is_extra')
             .eq('status', 'done')
-            .gte('date', `${currentYear}-01-01`)
+            .gte('date', `${startYear}-01-01`)
             .lte('date', `${currentYear}-12-31`)
-            .range(0, 99999); // 💡 ここで「0〜9万9999件まで一気に持ってこい」と強制突破命令を出します
+            .range(0, 99999);
 
         if (error) throw error;
 
-        // 💡 画面側が期待する形式に成形（過去の合算データis_extraがあればそれも考慮）
+        // 💡 画面側（グラフ）が受け取れる形にデータを綺麗に成形
         const formattedData = (data || []).map(r => {
             let rowCount = 1;
             if (r.is_extra && Number(r.is_extra) > 1) {
@@ -268,7 +271,6 @@ app.get("/api/report/all", async (req, res) => {
         res.status(500).json({ error: "データ取得に失敗しました" });
     }
 });
-
 // 予約登録
 app.post('/api/reserve', async (req, res) => {
     const { id, patient_name, part, patient_id } = req.body;
