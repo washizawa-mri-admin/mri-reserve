@@ -208,10 +208,38 @@ app.get("/api/report/doctors", async (req, res) => {
   res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
 });
 
-// 既存のレポートAPI
+// ==========================================
+// 📊 【修正版】超軽量・リアルタイム レポートAPI
+// ==========================================
 app.get("/api/report/all", async (req, res) => {
-    const { data } = await supabase.from('slots').select('*').eq('status', 'done');
-    res.json((data || []).map(r => ({ date: r.date, doctor: r.doctor || "未選択", is_remote: r.is_remote ? 1 : 0, count: (r.is_extra > 1) ? r.is_extra : 1 })));
+    try {
+        // 💡 画面側から送られてくる基準の「年」（例: 2026）を取得。なければ現在の年
+        const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
+        const currentYear = selMonth.split('-')[0];
+
+        // 💡 過去の全件を呼ぶのをやめ、選択された「その年」の done（終了）データだけを狙い撃ちで取得！
+        const { data, error } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote')
+            .eq('status', 'done')
+            .gte('date', `${currentYear}-01-01`)
+            .lte('date', `${currentYear}-12-31`);
+
+        if (error) throw error;
+
+        // 💡 画面側が期待するシンプルな形式に成形（1レコード = 1件として純粋にカウント）
+        const formattedData = (data || []).map(r => ({
+            date: r.date,
+            doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+            is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
+            count: 1 // 終了している枠は純粋に1件としてカウント
+        }));
+
+        res.json(formattedData);
+    } catch (err) {
+        console.error("レポートAPIエラー:", err);
+        res.status(500).json({ error: "データ取得に失敗しました" });
+    }
 });
 
 // 予約登録
