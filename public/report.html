@@ -118,14 +118,13 @@
 </div>
 
 <script>
-// 💡 メインの医師リストに「その他・非常勤」を追加
-const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木", "その他・非常勤"];
+// 💡 管理画面の配列と完全に一致させました（「非常勤」に変更）
+const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
 document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
 let chart1 = null, chart2 = null;
 
 async function updateCharts() {
     try {
-        // 💡 元の安全なAPIルートに戻しました（これでデータが復活します）
         const res = await fetch('/api/report/all');
         const raw = await res.json();
         const selMonth = document.getElementById("monthInput").value;
@@ -135,24 +134,31 @@ async function updateCharts() {
         document.getElementById("barChartTitle").innerText = `担当医別実績 (${displayMonth})`;
         document.getElementById("tableTitle").innerText = `医師別詳細集計 (${displayMonth})`;
 
-        // 💡 選択月のデータを抽出
-        const monthly = raw.filter(r => r.date && r.date.startsWith(selMonth));
+        // 💡 生データ(status='done')、または従来の集計済みデータのどちらでも対応できる安全フィルター
+        const monthly = raw.filter(r => {
+            if (!r.date) return false;
+            // 生データの場合はstatus='done'のみカウント、集計済みデータならそのまま通す
+            if (r.hasOwnProperty('status') && r.status !== 'done') return false;
+            return r.date.startsWith(selMonth);
+        });
         
-        // 医師ごとのカウント用配列
         const barDataNormal = new Array(doctors.length).fill(0);
         const barDataRemote = new Array(doctors.length).fill(0);
 
-        // 💡 ここで「リストにない医師（非常勤）」を自動でその他に集計するロジックに強化！
         monthly.forEach(r => {
             let docIndex = doctors.indexOf(r.doctor);
+            // 💡 マッチしない場合、または「その他・非常勤」などの古い表記はすべて「非常勤」の枠に叩き込む
             if (docIndex === -1) {
-                docIndex = doctors.indexOf("その他・非常勤"); // リストになければここに合算
+                docIndex = doctors.indexOf("非常勤");
             }
             
-            if (r.is_remote === 0) {
-                barDataNormal[docIndex] += (r.count || 0);
-            } else if (r.is_remote === 1) {
-                barDataRemote[docIndex] += (r.count || 0);
+            // 1レコードあたりの件数（生データなら1件、集計済みならr.count）
+            const amt = r.hasOwnProperty('count') ? (r.count || 0) : 1;
+            
+            if (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") {
+                barDataRemote[docIndex] += amt;
+            } else {
+                barDataNormal[docIndex] += amt;
             }
         });
 
@@ -169,9 +175,16 @@ async function updateCharts() {
         const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
         document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
 
+        // 💡 年間・累計の集計関数（生データ・集計データ両対応）
+        const calcTotal = (dataset) => dataset.reduce((sum, r) => {
+            if (r.hasOwnProperty('status') && r.status !== 'done') return sum;
+            return sum + (r.hasOwnProperty('count') ? (r.count || 0) : 1);
+        }, 0);
+
+        const yearlyData = raw.filter(r => r.date && r.date.startsWith(year));
         document.getElementById("yearlyLabel").innerText = `${year}年 年間合計`;
-        document.getElementById("yearlyTotal").innerText = raw.filter(r => r.date && r.date.startsWith(year)).reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
-        document.getElementById("grandTotal").innerText = raw.reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
+        document.getElementById("yearlyTotal").innerText = calcTotal(yearlyData).toLocaleString();
+        document.getElementById("grandTotal").innerText = calcTotal(raw).toLocaleString();
 
         if(chart1) chart1.destroy();
         chart1 = new Chart(document.getElementById('barChart'), {
@@ -197,7 +210,8 @@ async function updateCharts() {
             const counts = [];
             for(let m=1; m<=12; m++) {
                 const mStr = `${y}-${String(m).padStart(2,'0')}`;
-                counts.push(raw.filter(r => r.date && r.date.startsWith(mStr)).reduce((sum, item) => sum + (item.count || 0), 0));
+                const mData = raw.filter(r => r.date && r.date.startsWith(mStr));
+                counts.push(calcTotal(mData));
             }
             return { 
                 label: `${y}年`, data: counts, borderColor: colors[i], backgroundColor: colors[i],
