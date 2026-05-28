@@ -131,24 +131,7 @@ function selectSide(side) {
 
 function confirmPart(partName) {
     if (!currentEditId) return;
-    
-    let finalPartName = partName;
-
-    // 💡 「その他」が押された場合だけ、入力ダイアログを出す
-    if (partName === 'その他') {
-        const customPart = prompt("部位を入力してください（例：胸椎、手関節 など）", "");
-        
-        // キャンセルされた、または何も入力されなかった場合は処理を中断
-        if (customPart === null) return; 
-        if (customPart.trim() === "") {
-            alert("部位が入力されていません。");
-            return;
-        }
-        finalPartName = customPart.trim();
-    }
-
-    // 左右（「左」「右」）と部位の名前を合体させる
-    const fullPart = currentSide + finalPartName;
+    const fullPart = currentSide + partName;
     const name = document.getElementById(`name-${currentEditId}`).value;
     const pid = document.getElementById(`id-${currentEditId}`).value;
 
