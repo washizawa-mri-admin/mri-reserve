@@ -179,26 +179,22 @@ function load() {
 
         let counts = { waiting: 0, scanning: 0, done: 0 };
 
-        // 💡 3. 【最重要】一気にinnerHTMLを書き換えず、枠の「数」が同じなら中身だけをスマートに更新する！
+        // 💡 3. 既存の枠がある場合の差分更新
         const existingSlots = list.querySelectorAll('.slot');
         
         if (existingSlots.length === data.length) {
-            // 枠の数が同じ（普段の更新）なら、ガタつかせずに中身だけ書き換える
             data.forEach((item, index) => {
                 const status = item.status || '';
                 if (counts.hasOwnProperty(status)) counts[status]++;
                 
                 const slotDiv = existingSlots[index];
-                // クラス名を更新（ステータスの色変更を反映）
                 slotDiv.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
                 
-                // 時間とタグの更新
                 const timeDiv = slotDiv.querySelector('.time');
                 if (timeDiv) {
                     timeDiv.innerHTML = `${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}`;
                 }
 
-                // 入力欄の値の更新（スタッフが入力中の文字があればそれを優先）
                 const idInput = slotDiv.querySelector(`#id-${item.id}`);
                 const nameInput = slotDiv.querySelector(`#name-${item.id}`);
                 const partSpan = slotDiv.querySelector('span[style*="font-size:0.8em"]');
@@ -210,12 +206,16 @@ function load() {
                 if (nameInput) nameInput.value = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
                 if (partSpan) partSpan.innerText = item.part ? ` [${item.part}]` : "";
                 
+                // 💡 【ここを修正！】ドクターのセレクトボックスの中身（選択肢）を正しく復元して連動させる
                 if (doctorSelect) {
-                    doctorSelect.value = item.doctor || "";
+                    doctorSelect.innerHTML = `
+                        <option value="">--</option>
+                        ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
+                    `;
                 }
             });
         } else {
-            // 💡 枠の数自体が変わった時（枠を追加・削除した時）だけ、全体を新しく作り直す
+            // 💡 枠の数自体が変わった時（枠を追加・削除した時）の全体作り直し
             list.innerHTML = "";
             data.forEach(item => {
                 const status = item.status || '';
@@ -253,7 +253,7 @@ function load() {
             });
         }
 
-        // 💡 4. カーソルを元の位置に一寸の狂いもなく復元
+        // 💡 4. カーソルを元の位置に復元
         if (activeId && document.getElementById(activeId)) {
             const inputEl = document.getElementById(activeId);
             inputEl.focus();
