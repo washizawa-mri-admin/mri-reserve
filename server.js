@@ -168,14 +168,21 @@ app.post("/api/update", async (req, res) => {
 });
 // 読影
 app.post("/api/remote", async (req, res) => {
-  const { id, patient_name, patient_id } = req.body;
-  const { error } = await supabase.from('slots').update({ 
-    is_remote: 1, 
-    patient_name: patient_name || null,
-    patient_id: patient_id || null
-  }).eq('id', id);
-  if (error) return res.status(500).json(error);
-  res.json({ status: "ok" });
+    // 💡 画面側から送られてくる doctor もしっかり受け取る
+    const { id, patient_name, patient_id, doctor } = req.body;
+    
+    let updateData = { is_remote: 1 };
+    if (patient_name !== undefined) updateData.patient_name = patient_name || null;
+    if (patient_id !== undefined) updateData.patient_id = patient_id || null;
+    
+    // 💡 読影状態にするときに、ドクターが選ばれていればそれも一緒にSupabaseに保存！
+    if (doctor !== undefined && doctor !== null && doctor !== "") {
+        updateData.doctor = doctor;
+    }
+    
+    const { error } = await supabase.from('slots').update(updateData).eq('id', id);
+    if (error) return res.status(500).json(error);
+    res.json({ status: "ok" });
 });
 
 // 撮影開始
