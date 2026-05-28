@@ -117,6 +117,7 @@
     </div>
 </div>
 
+<script>
 // 💡 メイン画面と完全に一致させる＋「その他・非常勤」の枠を用意
 const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木", "その他・非常勤"];
 document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
@@ -124,8 +125,8 @@ let chart1 = null, chart2 = null;
 
 async function updateCharts() {
     try {
-        // 💡 280件で止まる怪しいAPIをやめ、予約の生データを全件リアルタイムに取得する！
-        const res = await fetch('/api/slots?all=true'); // サーバー側から全データを引っ張る
+        // 💡 280件で止まる古いAPIをやめ、予約の生データを全件リアルタイムに取得する
+        const res = await fetch('/api/slots?all=true'); 
         const rawData = await res.json();
         
         const selMonth = document.getElementById("monthInput").value;
@@ -143,7 +144,7 @@ async function updateCharts() {
         const barDataRemote = new Array(doctors.length).fill(0);
 
         monthlyData.forEach(item => {
-            // ドクター名が登録リストにあるか確認。なければ「その他・非常勤」に放り込む！
+            // ドクター名が登録リストにあるか確認。なければ「その他・非常勤」に集計
             let docIndex = doctors.indexOf(item.doctor);
             if (docIndex === -1) {
                 docIndex = doctors.indexOf("その他・非常勤");
@@ -170,7 +171,7 @@ async function updateCharts() {
         const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
         document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
 
-        // KPI（年間・累計）のリアルタイム計算（280件の呪縛を突破！）
+        // KPI（年間・累計）のリアルタイム計算
         const yearlyTotalCount = rawData.filter(item => item.date && item.date.startsWith(year)).length;
         const grandTotalCount = rawData.length;
 
@@ -205,7 +206,6 @@ async function updateCharts() {
             const counts = [];
             for(let m=1; m<=12; m++) {
                 const mStr = `${y}-${String(m).padStart(2,'0')}`;
-                // その年・その月のデータ件数を数える
                 const count = rawData.filter(item => item.date && item.date.startsWith(mStr)).length;
                 counts.push(count);
             }
