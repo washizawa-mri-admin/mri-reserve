@@ -117,16 +117,17 @@
     </div>
 </div>
 
-<script>
-// (中身のJavaScriptはタイトル自動更新を含め、前回のものをそのまま継承)
+// 💡 メイン画面と完全に一致させる＋「その他・非常勤」の枠を用意
+const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木", "その他・非常勤"];
 document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
 let chart1 = null, chart2 = null;
-const doctors = ["鷲澤","永野","鷲澤匠","中村","石橋","木内","白石","小谷野","鈴木","河本","非常勤"];
 
 async function updateCharts() {
     try {
-        const res = await fetch('/api/report/all');
-        const raw = await res.json();
+        // 💡 280件で止まる怪しいAPIをやめ、予約の生データを全件リアルタイムに取得する！
+        const res = await fetch('/api/slots?all=true'); // サーバー側から全データを引っ張る
+        const rawData = await res.json();
+        
         const selMonth = document.getElementById("monthInput").value;
         const [year, month] = selMonth.split('-');
         const displayMonth = `${year}年${month}月`;
@@ -134,10 +135,28 @@ async function updateCharts() {
         document.getElementById("barChartTitle").innerText = `担当医別実績 (${displayMonth})`;
         document.getElementById("tableTitle").innerText = `医師別詳細集計 (${displayMonth})`;
 
-        const monthly = raw.filter(r => r.date.startsWith(selMonth));
-        const barDataNormal = doctors.map(d => monthly.filter(r => r.doctor === d && r.is_remote === 0).reduce((a,b)=>a+b.count, 0));
-        const barDataRemote = doctors.map(d => monthly.filter(r => r.doctor === d && r.is_remote === 1).reduce((a,b)=>a+b.count, 0));
+        // 💡 選択された月だけのデータをフィルタリング
+        const monthlyData = rawData.filter(item => item.date && item.date.startsWith(selMonth));
 
+        // ドクターごとの集計配列を初期化
+        const barDataNormal = new Array(doctors.length).fill(0);
+        const barDataRemote = new Array(doctors.length).fill(0);
+
+        monthlyData.forEach(item => {
+            // ドクター名が登録リストにあるか確認。なければ「その他・非常勤」に放り込む！
+            let docIndex = doctors.indexOf(item.doctor);
+            if (docIndex === -1) {
+                docIndex = doctors.indexOf("その他・非常勤");
+            }
+
+            if (item.is_remote === 1 || item.is_remote === true) {
+                barDataRemote[docIndex]++;
+            } else {
+                barDataNormal[docIndex]++;
+            }
+        });
+
+        // テーブル（HTML）の組み立て
         let tN = 0, tR = 0;
         document.getElementById("summaryBody").innerHTML = doctors.map((d, i) => {
             const n = barDataNormal[i];
@@ -151,10 +170,15 @@ async function updateCharts() {
         const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
         document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
 
-        document.getElementById("yearlyLabel").innerText = `${year}年 年間合計`;
-        document.getElementById("yearlyTotal").innerText = raw.filter(r => r.date.startsWith(year)).reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
-        document.getElementById("grandTotal").innerText = raw.reduce((a, b) => a + (b.count || 0), 0).toLocaleString();
+        // KPI（年間・累計）のリアルタイム計算（280件の呪縛を突破！）
+        const yearlyTotalCount = rawData.filter(item => item.date && item.date.startsWith(year)).length;
+        const grandTotalCount = rawData.length;
 
+        document.getElementById("yearlyLabel").innerText = `${year}年 年間合計`;
+        document.getElementById("yearlyTotal").innerText = yearlyTotalCount.toLocaleString();
+        document.getElementById("grandTotal").innerText = grandTotalCount.toLocaleString();
+
+        // 📊 担当医別棒グラフの更新
         if(chart1) chart1.destroy();
         chart1 = new Chart(document.getElementById('barChart'), {
             type: 'bar',
@@ -172,14 +196,18 @@ async function updateCharts() {
             }
         });
 
+        // 📈 過去3年間の撮影推移折れ線グラフのリアルタイム計算
         const selYearInt = parseInt(year);
         const years = [selYearInt, selYearInt - 1, selYearInt - 2];
         const colors = ['#0288d1', '#43a047', '#f57c00'];
+        
         const lineSets = years.map((y, i) => {
             const counts = [];
             for(let m=1; m<=12; m++) {
                 const mStr = `${y}-${String(m).padStart(2,'0')}`;
-                counts.push(raw.filter(r => r.date.startsWith(mStr)).reduce((sum, item) => sum + (item.count || 0), 0));
+                // その年・その月のデータ件数を数える
+                const count = rawData.filter(item => item.date && item.date.startsWith(mStr)).length;
+                counts.push(count);
             }
             return { 
                 label: `${y}年`, data: counts, borderColor: colors[i], backgroundColor: colors[i],
@@ -201,6 +229,7 @@ async function updateCharts() {
         console.error("統計更新エラー:", e);
     }
 }
+
 updateCharts();
 </script>
 </body>
