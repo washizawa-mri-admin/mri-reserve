@@ -269,22 +269,32 @@ function load() {
 }
 
 function update(id, status, doctor) {
-    // 💡 画面上のセレクトボックスから、今選ばれているドクター名を取得する
-    const currentDoctorSelect = document.querySelector(`#id-${id}`)?.closest('.slot')?.querySelector('select');
-    const currentDoctor = currentDoctorSelect ? currentDoctorSelect.value : "";
+    // 💡 ID入力欄から探すのをやめ、イベントが発生したslot（枠）の中のselectを直接安全に探す
+    // ※もし見つからなければ、関数に引数として渡ってきたdoctorを信じる
+    const selectEl = document.querySelector(`select[onchange*="update(${id},"]`);
+    const currentDoctor = selectEl ? selectEl.value : "";
 
-    // 💡 引数でdoctorが渡されていればそれを使い、なければ今画面で選ばれているドクターを使う
-    const finalDoctor = (doctor !== undefined && doctor !== null) ? doctor : currentDoctor;
+    // 💡 プルダウン変更（引数にdoctorがある）ならそれを使い、ボタン操作なら画面の選択状態を使う
+    let finalDoctor = currentDoctor;
+    if (doctor !== undefined && doctor !== null) {
+        finalDoctor = doctor;
+    }
 
     const body = { id, doctor: finalDoctor };
-    if (status !== null) body.status = status;
+    
+    // 💡 statusが明示的に指定されている（ボタン操作の）場合のみ、ステータスを更新する
+    if (status !== null && status !== undefined) {
+        body.status = status;
+    }
 
+    // 💡 過去・当日・後日に関係なく、データをSupabaseに送信
     fetch("/api/update", { 
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify(body) 
     }).then(load); 
 }
+    
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`)?.value;
     const pid = document.getElementById(`id-${id}`)?.value;
