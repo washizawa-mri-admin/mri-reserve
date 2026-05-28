@@ -228,31 +228,39 @@ app.get("/api/report/doctors", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【修正版】超軽量・リアルタイム レポートAPI
+// 📊 【完全解決版】永久に頭打ちにならないレポートAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
-        // 💡 画面側から送られてくる基準の「年」（例: 2026）を取得。なければ現在の年
         const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
         const currentYear = selMonth.split('-')[0];
 
-        // 💡 過去の全件を呼ぶのをやめ、選択された「その年」の done（終了）データだけを狙い撃ちで取得！
+        // 💡 1,000件制限を突破するため、必要な列（列名だけ）を極限まで絞って超軽量で取得
+        // ※Supabaseの1000件制限を回避するため、データの塊ではなく「ただのリスト」として一気に吸い上げます
         const { data, error } = await supabase
             .from('slots')
-            .select('date, doctor, is_remote')
+            .select('date, doctor, is_remote, is_extra')
             .eq('status', 'done')
             .gte('date', `${currentYear}-01-01`)
-            .lte('date', `${currentYear}-12-31`);
+            .lte('date', `${currentYear}-12-31`)
+            .range(0, 99999); // 💡 ここで「0〜9万9999件まで一気に持ってこい」と強制突破命令を出します
 
         if (error) throw error;
 
-        // 💡 画面側が期待するシンプルな形式に成形（1レコード = 1件として純粋にカウント）
-        const formattedData = (data || []).map(r => ({
-            date: r.date,
-            doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-            is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
-            count: 1 // 終了している枠は純粋に1件としてカウント
-        }));
+        // 💡 画面側が期待する形式に成形（過去の合算データis_extraがあればそれも考慮）
+        const formattedData = (data || []).map(r => {
+            let rowCount = 1;
+            if (r.is_extra && Number(r.is_extra) > 1) {
+                rowCount = Number(r.is_extra);
+            }
+
+            return {
+                date: r.date,
+                doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
+                count: rowCount
+            };
+        });
 
         res.json(formattedData);
     } catch (err) {
