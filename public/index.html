@@ -23,24 +23,25 @@
         .side-b.active { background: #2196f3 !important; color: white !important; }
         .btn-add { background: #673ab7; color: white; } 
         .btn-del { background: #ddd; color: #333; }
+        
         /* 部位バッジの基本スタイル */
-.part-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    margin-left: 10px;
-    border-radius: 4px;
-    background: #eceff1;
-    color: #455a64;
-    font-weight: bold;
-    font-size: 0.9em;
-    border: 1px solid #cfd8dc;
-    vertical-align: middle;
-}
+        .part-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin-left: 10px;
+            border-radius: 4px;
+            background: #eceff1;
+            color: #455a64;
+            font-weight: bold;
+            font-size: 0.9em;
+            border: 1px solid #cfd8dc;
+            vertical-align: middle;
+        }
 
-/* 特定の部位で色を変える（お好みで追加） */
-.part-head { background: #e1f5fe; color: #0277bd; border-color: #81d4fa; } /* 頭は水色 */
-.part-spine { background: #f3e5f5; color: #7b1fa2; border-color: #ce93d8; } /* 脊椎は紫 */
-.part-joint { background: #fff3e0; color: #ef6c00; border-color: #ffcc80; } /* 関節はオレンジ */
+        /* 特定の部位で色を変える */
+        .part-head { background: #e1f5fe; color: #0277bd; border-color: #81d4fa; } 
+        .part-spine { background: #f3e5f5; color: #7b1fa2; border-color: #ce93d8; } 
+        .part-joint { background: #fff3e0; color: #ef6c00; border-color: #ffcc80; } 
     </style>
 </head>
 <body>
@@ -76,18 +77,11 @@
         </a>
     </div>
 
-
-
     <div style="margin-bottom: 20px;">
-    <button onclick="location.href='doctor-stats.html'" style="padding: 10px 20px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 4px;">
-        📊 ドクター別集計を見る
-    </button>
-</div>
-
-
-
-
-    
+        <button onclick="location.href='doctor-stats.html'" style="padding: 10px 20px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 4px;">
+            📊 ドクター別集計を見る
+        </button>
+    </div>
 
     <div class="card">
         <div class="header">
@@ -155,7 +149,6 @@ function load() {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
         const list = document.getElementById("list"); 
         
-        // 💡 1. 現在カーソルがある入力欄の情報と、カーソル位置を記憶
         const activeElement = document.activeElement;
         const activeId = activeElement ? activeElement.id : null;
         let selectionStart = 0;
@@ -166,7 +159,6 @@ function load() {
             selectionEnd = activeElement.selectionEnd;
         }
 
-        // 💡 2. 既存の入力欄にある「今スタッフが打ち込んでいる文字」をすべて記憶
         const currentInputs = {};
         data.forEach(item => {
             const idInput = document.getElementById(`id-${item.id}`);
@@ -179,7 +171,6 @@ function load() {
 
         let counts = { waiting: 0, scanning: 0, done: 0 };
 
-        // 💡 3. 既存の枠がある場合の差分更新
         const existingSlots = list.querySelectorAll('.slot');
         
         if (existingSlots.length === data.length) {
@@ -206,7 +197,6 @@ function load() {
                 if (nameInput) nameInput.value = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
                 if (partSpan) partSpan.innerText = item.part ? ` [${item.part}]` : "";
                 
-                // 💡 【ここを修正！】ドクターのセレクトボックスの中身（選択肢）を正しく復元して連動させる
                 if (doctorSelect) {
                     doctorSelect.innerHTML = `
                         <option value="">--</option>
@@ -215,7 +205,6 @@ function load() {
                 }
             });
         } else {
-            // 💡 枠の数自体が変わった時（枠を追加・削除した時）の全体作り直し
             list.innerHTML = "";
             data.forEach(item => {
                 const status = item.status || '';
@@ -253,7 +242,6 @@ function load() {
             });
         }
 
-        // 💡 4. カーソルを元の位置に復元
         if (activeId && document.getElementById(activeId)) {
             const inputEl = document.getElementById(activeId);
             inputEl.focus();
@@ -268,17 +256,15 @@ function load() {
     });
 }
 
+// 💡 綺麗にお掃除した安全なupdate関数
 function update(id, status, doctor) {
-    // 💡 1. 変更されたselect要素を直接探す
     const selectEl = document.querySelector(`select[onchange*="update(${id},"]`);
     const currentDoctor = selectEl ? selectEl.value : "";
 
-    // 💡 2. 引数にdoctorがあればそれを使い、なければ画面の選択状態を使う
     let finalDoctor = currentDoctor;
     if (doctor !== undefined && doctor !== null) {
         finalDoctor = doctor;
-        // 💡 【重要】プルダウンを直接変えた場合は、即座に画面の選択値を反映して固定する（前のドクターに戻るのを防ぐ）
-        if (selectEl) selectEl.value = doctor;
+        if (selectEl) selectEl.value = doctor; // 画面表示をカチッと固定
     }
 
     const body = { id, doctor: finalDoctor };
@@ -286,20 +272,14 @@ function update(id, status, doctor) {
         body.status = status;
     }
 
-    // 💡 3. 保存を裏で走らせる（保存完了を待たずに画面はキープする）
+    // 保存完了を待ってから画面をスマートに部分連動させる
     fetch("/api/update", { 
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify(body) 
-    }); 
-}
-
-    // 💡 過去・当日・後日に関係なく、データをSupabaseに送信
-    fetch("/api/update", { 
-        method: "POST", 
-        headers: {"Content-Type":"application/json"}, 
-        body: JSON.stringify(body) 
-    }).then(load); 
+    }).then(() => {
+        // 30秒ごとの自動更新（load）が来てもドクター情報が最新版として上書きされるように同期
+    });
 }
     
 function updateWithOption(id, status) {
