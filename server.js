@@ -138,22 +138,34 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// データ更新窓口
+// ==========================================
+// 🔄 【修正版】いつでも・どの枠でも変更できるデータ更新窓口
+// ==========================================
 app.post("/api/update", async (req, res) => {
-  const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
-  let updateData = {};
-  if (doctor !== undefined) updateData.doctor = doctor;
-  if (status !== undefined) updateData.status = status;
-  if (patient_name !== undefined) updateData.patient_name = patient_name;
-  if (patient_id !== undefined) updateData.patient_id = patient_id;
-  if (part !== undefined) updateData.part = part;
-  if (is_remote !== undefined) updateData.is_remote = is_remote;
-  
-  const { error } = await supabase.from('slots').update(updateData).eq('id', id);
-  if (error) return res.status(500).json(error);
-  res.json({ status: "ok" });
+    const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
+    
+    // 💡 届いたデータ（存在する項目）だけを動的に組み立てる
+    let updateData = {};
+    
+    if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
+    if (status !== undefined && status !== null) updateData.status = status;
+    if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
+    if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
+    if (part !== undefined && part !== null) updateData.part = part;
+    if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
+    
+    // 💡 もしIDがない、または更新する中身が空っぽなら何もしない
+    if (!id || Object.keys(updateData).length === 0) {
+        return res.json({ status: "ignored" });
+    }
+    
+    const { error } = await supabase.from('slots').update(updateData).eq('id', id);
+    if (error) {
+        console.error("データ更新エラー:", error);
+        return res.status(500).json(error);
+    }
+    res.json({ status: "ok" });
 });
-
 // 読影
 app.post("/api/remote", async (req, res) => {
   const { id, patient_name, patient_id } = req.body;
