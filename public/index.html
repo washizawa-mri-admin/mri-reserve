@@ -269,11 +269,22 @@ function load() {
 }
 
 function update(id, status, doctor) {
-    const body = { id, doctor };
-    if (status !== null) body.status = status;
-    fetch("/api/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(load); 
-}
+    // 💡 画面上のセレクトボックスから、今選ばれているドクター名を取得する
+    const currentDoctorSelect = document.querySelector(`#id-${id}`)?.closest('.slot')?.querySelector('select');
+    const currentDoctor = currentDoctorSelect ? currentDoctorSelect.value : "";
 
+    // 💡 引数でdoctorが渡されていればそれを使い、なければ今画面で選ばれているドクターを使う
+    const finalDoctor = (doctor !== undefined && doctor !== null) ? doctor : currentDoctor;
+
+    const body = { id, doctor: finalDoctor };
+    if (status !== null) body.status = status;
+
+    fetch("/api/update", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify(body) 
+    }).then(load); 
+}
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`)?.value;
     const pid = document.getElementById(`id-${id}`)?.value;
