@@ -66,7 +66,7 @@
             <button onclick="confirmPart('下腿')" style="padding:10px; cursor:pointer;">下腿</button>
             <button onclick="confirmPart('大腿')" style="padding:10px; cursor:pointer;">大腿</button>
             <button onclick="confirmPart('上肢')" style="padding:10px; cursor:pointer;">上肢</button>
-            <button onclick="confirmPart('その他')" style="padding:10px; cursor:pointer;">その他</button>
+            <button onclick="confirmCustomPart()" style="padding:10px; cursor:pointer; background:#eceff1; font-weight:bold;">その他 (手入力)</button>
         </div>
         <button onclick="closePartPanel()" style="width:100%; margin-top:15px; padding:10px; background:#444; color:white; border:none; cursor:pointer;">キャンセル</button>
     </div>
@@ -138,6 +138,16 @@ function confirmPart(partName) {
         closePartPanel();
         load();
     });
+}
+
+// 💡 新設：「その他」を押したときに、自由入力させるポップアップを出す
+function confirmCustomPart() {
+    if (!currentEditId) return;
+    const customName = prompt("部位の名称を自由に入力してください（例：手根管、大腿骨など）");
+    if (customName === null) return; // キャンセルされたら何もしない
+    
+    // 入力があれば、選択されている左右（currentSide）とガッチャンコして確定
+    confirmPart(customName.trim() === "" ? "その他" : customName);
 }
 
 function closePartPanel() {
@@ -237,7 +247,7 @@ function load() {
                             <option value="">--</option>
                             ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
                         </select>
-                        <input type="text" value="${otherValue}" placeholder="その他" id="other-${item.id}" style="padding:5px; width:100px; margin-left:5px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${otherValue}" placeholder="その他欄" id="other-${item.id}" style="padding:5px; width:100px; margin-left:5px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
                         <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
                         <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
@@ -291,8 +301,6 @@ function updateWithOption(id, status) {
     const pid = document.getElementById(`id-${id}`)?.value;
     const other = document.getElementById(`other-${id}`)?.value || "";
     
-    // 💡 決定版：statusが指定されていない（名前入力後のEnterなど）の場合は、
-    // サーバー側の自動防衛壁と連携するために status プロパティ自体を送信データに含めない！
     const body = { id, patient_name: name, patient_id: pid, other: other };
     if (status !== null && status !== undefined) {
         body.status = status;
@@ -350,7 +358,7 @@ function addSlot() {
 
 document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
 load();
-setInterval(load, 300000); // 💡 5分自動更新に設定済み
+setInterval(load, 300000); // 5分自動更新に設定済み
 </script>
 </body>
 </html>
