@@ -156,7 +156,6 @@
             dates.forEach((dateStr, colIndex) => {
                 const slot = weekData[colIndex].find(s => s.time === t);
                 if (slot) {
-                    // ★重要：ステータスを見て色を判定する
                     const isBooked = ["waiting", "scanning", "done"].includes(slot.status);
                     const name = slot.patient_name || "";
                     row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${slot.patient_id || ''}', '${slot.part || ''}')">
@@ -179,7 +178,6 @@
         times.forEach(t => {
             const slot = data.find(s => s.time === t);
             if (!slot) return;
-            // ★重要：ステータスを見て色を判定する
             const isBooked = ["waiting", "scanning", "done"].includes(slot.status);
             const name = slot.patient_name || "";
             const div = document.createElement("div");
@@ -210,13 +208,32 @@
         document.getElementById('pName').value = name;
         document.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
         setSide('');
+        
         if(part) {
             if(part.startsWith('左')) { setSide('左'); curP = part.replace('左',''); }
             else if(part.startsWith('右')) { setSide('右'); curP = part.replace('右',''); }
             else { curP = part; }
+            
+            let matchFound = false;
             document.querySelectorAll('#partsGrid .btn-opt').forEach(b => {
-                if(b.innerText === curP) b.classList.add('active');
+                if(b.innerText === curP) {
+                    b.classList.add('active');
+                    matchFound = true;
+                }
             });
+            
+            // 固定パーツリストになければ「その他」ボタンを緑（active）にする
+            if(!matchFound && curP !== "") {
+                const otherBtn = document.getElementById("btn-other-part");
+                if(otherBtn) {
+                    otherBtn.classList.add('active');
+                    otherBtn.innerText = `その他 (${curP})`;
+                }
+            }
+        } else {
+            // 新規枠を開くときは「その他」ボタンのテキストを初期化
+            const otherBtn = document.getElementById("btn-other-part");
+            if(otherBtn) otherBtn.innerText = "その他 (手入力)";
         }
         document.getElementById('modal').style.display = 'flex';
     }
@@ -237,7 +254,6 @@
 
     async function deleteReservation() {
         if(!confirm("予約を完全に消去しますか？")) return;
-        // ★確実にステータスをリセットする窓口を叩く
         const res = await fetch("/api/delete", {
             method: "POST",
             headers: {"Content-Type":"application/json"},
@@ -253,9 +269,36 @@
         b.onclick = () => {
             document.querySelectorAll('#partsGrid .btn-opt').forEach(x => x.classList.remove('active'));
             b.classList.add('active'); curP = p;
+            // 既存部位を選んだら「その他」表記をリセット
+            document.getElementById("btn-other-part").innerText = "その他 (手入力)";
         };
         pGrid.appendChild(b);
     });
+
+    // 💡 新設：「その他」手入力ボタンを生成してグリッド末尾に配置
+    const otherBtn = document.createElement("div");
+    otherBtn.className = "btn-opt";
+    otherBtn.id = "btn-other-part";
+    otherBtn.innerText = "その他 (手入力)";
+    otherBtn.style.background = "#eceff1";
+    otherBtn.style.fontWeight = "bold";
+    otherBtn.onclick = () => {
+        const customName = prompt("部位の名称を自由に入力してください（例：手根管、大腿骨など）");
+        if (customName === null) return; // キャンセル時
+        
+        const trimmed = customName.trim();
+        if(trimmed !== "") {
+            document.querySelectorAll('#partsGrid .btn-opt').forEach(x => x.classList.remove('active'));
+            otherBtn.classList.add('active');
+            otherBtn.innerText = `その他 (${trimmed})`;
+            curP = trimmed;
+        } else {
+            otherBtn.classList.remove('active');
+            otherBtn.innerText = "その他 (手入力)";
+            curP = "その他";
+        }
+    };
+    pGrid.appendChild(otherBtn);
 
     window.onresize = refresh;
     refresh();
