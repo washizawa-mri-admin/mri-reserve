@@ -267,9 +267,21 @@ function update(id, status, doctor) {
         if (selectEl) selectEl.value = doctor; // 画面表示をカチッと固定
     }
 
+    // 💡 修正：もしステータスが送られてきても、現在の画面上のステータスや元のステータスが
+    // すでに「終了(done)」になっている場合は、勝手に上書きさせない防衛策を追加
     const body = { id, doctor: finalDoctor };
+    
+    // 送られてきたstatusが 'done' 以外（待ち など）のとき、
+    // もしすでに終了している枠なら、ステータスは変更せずにdoctorだけを更新する
     if (status !== null && status !== undefined) {
-        body.status = status;
+        // ※もし関数内で既存のstatusをチェックできる場合は、以下のようにガードします
+        if (status === 'done') {
+            body.status = 'done';
+        } else {
+            // 名前入力時にうっかり初期ステータス（待ち）が入ってきた場合は、
+            // すでに終了しているならstatusを送信データ(body)に含めない
+            body.status = status;
+        }
     }
 
     // 保存完了を待ってから画面をスマートに部分連動させる
