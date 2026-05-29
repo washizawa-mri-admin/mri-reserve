@@ -228,49 +228,81 @@ app.get("/api/report/doctors", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【完全復活版】直近3カ年グラフ対応・頭打ちなしレポートAPI
+// 📊 【完全版】過去データ固定化 ＝ 加算式超軽量レポートAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
         const currentYear = parseInt(selMonth.split('-')[0]);
-        
-        // 💡 グラフで比較するために、選択された年の「2年前の1月1日」からデータをまとめて取得する！
-        // （例：2026年が選ばれていたら、2024-01-01 〜 2026-12-31 の3年間分）
-        const startYear = currentYear - 2;
 
-        // 💡 3年分だと余裕で1000件を超えるため、.range(0, 99999) を指定して制限を強制突破！
-        const { data, error } = await supabase
+        // 💡 グラフ用に直近3年間（今年・去年・一昨年）の範囲を決める
+        const startYear = currentYear - 2;
+        const startDate = `${startYear}-01-01`;
+        const endDate = `${currentYear}-12-31`;
+
+        // ⚡️ 【加算式ロジック①】：2ヶ月前より古い「確定データ」を新テーブルから一瞬で取得
+        // （2026年4月1日より前の古いデータはすべてここから数字だけを引くので超軽い！）
+        const { data: summaryData, error: summaryError } = await supabase
+            .from('monthly_summary')
+            .select('year_month, doctor, is_remote, total_count')
+            .gte('year_month', `${startYear}-01`)
+            .lte('year_month', `${currentYear}-12`);
+
+        if (summaryError) throw summaryError;
+
+        // ⚡️ 【加算式ロジック②】：直近2ヶ月（2026年4月1日以降）のデータだけをリアルタイムに集計
+        // （全件探さないのでSupabaseの1000件制限にも絶対に引っかからない！）
+        const { data: realTimeData, error: realTimeError } = await supabase
             .from('slots')
             .select('date, doctor, is_remote, is_extra')
             .eq('status', 'done')
-            .gte('date', `${startYear}-01-01`)
-            .lte('date', `${currentYear}-12-31`)
+            .gte('date', '2026-04-01') // 💡 ここで直近以降だけに絞り込む
+            .lte('date', endDate)
             .range(0, 99999);
 
-        if (error) throw error;
+        if (realTimeError) throw realTimeError;
 
-        // 💡 画面側（グラフ）が受け取れる形にデータを綺麗に成形
-        const formattedData = (data || []).map(r => {
-            let rowCount = 1;
-            if (r.is_extra && Number(r.is_extra) > 1) {
-                rowCount = Number(r.is_extra);
-            }
+        // 📦 ２つのデータを１つの綺麗な形にガッチャンコ（加算）する
+        const formattedData = [];
 
-            return {
-                date: r.date,
-                doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
-                count: rowCount
-            };
-        });
+        // ① 過去の確定データを詰める
+        if (summaryData) {
+            summaryData.forEach(r => {
+                // グラフが読み込めるように、年月の文字列（例: 2025-08）に「-01」を補正して日付にする
+                formattedData.push({
+                    date: `${r.year_month}-01`,
+                    doctor: r.doctor,
+                    is_remote: r.is_remote,
+                    count: Number(r.total_count)
+                });
+            });
+        }
 
+        // ② 直近のリアルタイムデータを集計して詰める
+        if (realTimeData) {
+            realTimeData.forEach(r => {
+                let rowCount = 1;
+                if (r.is_extra && Number(r.is_extra) > 1) {
+                    rowCount = Number(r.is_extra);
+                }
+                formattedData.push({
+                    date: r.date,
+                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                    is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
+                    count: rowCount
+                });
+            });
+        }
+
+        // 画面（グラフ）に完成したデータを返す
         res.json(formattedData);
+
     } catch (err) {
-        console.error("レポートAPIエラー:", err);
+        console.error("新レポートAPIエラー:", err);
         res.status(500).json({ error: "データ取得に失敗しました" });
     }
 });
+
 // 予約登録
 app.post('/api/reserve', async (req, res) => {
     const { id, patient_name, part, patient_id } = req.body;
