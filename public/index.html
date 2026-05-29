@@ -128,11 +128,12 @@ function confirmPart(partName) {
     const fullPart = currentSide + partName;
     const name = document.getElementById(`name-${currentEditId}`).value;
     const pid = document.getElementById(`id-${currentEditId}`).value;
+    const other = document.getElementById(`other-${currentEditId}`)?.value || "";
 
     fetch("/api/update", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ id: currentEditId, part: fullPart, patient_name: name, patient_id: pid })
+        body: JSON.stringify({ id: currentEditId, part: fullPart, patient_name: name, patient_id: pid, other: other })
     }).then(() => {
         closePartPanel();
         load();
@@ -163,9 +164,11 @@ function load() {
         data.forEach(item => {
             const idInput = document.getElementById(`id-${item.id}`);
             const nameInput = document.getElementById(`name-${item.id}`);
+            const otherInput = document.getElementById(`other-${item.id}`);
             currentInputs[item.id] = {
                 idValue: idInput ? idInput.value : null,
-                nameValue: nameInput ? nameInput.value : null
+                nameValue: nameInput ? nameInput.value : null,
+                otherValue: otherInput ? otherInput.value : null
             };
         });
 
@@ -188,6 +191,7 @@ function load() {
 
                 const idInput = slotDiv.querySelector(`#id-${item.id}`);
                 const nameInput = slotDiv.querySelector(`#name-${item.id}`);
+                const otherInput = slotDiv.querySelector(`#other-${item.id}`);
                 const partSpan = slotDiv.querySelector('span[style*="font-size:0.8em"]');
                 const doctorSelect = slotDiv.querySelector('select');
 
@@ -195,6 +199,7 @@ function load() {
                 
                 if (idInput) idInput.value = (savedInput && savedInput.idValue !== null) ? savedInput.idValue : (item.patient_id || "");
                 if (nameInput) nameInput.value = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
+                if (otherInput) otherInput.value = (savedInput && savedInput.otherValue !== null) ? savedInput.otherValue : (item.other || "");
                 if (partSpan) partSpan.innerText = item.part ? ` [${item.part}]` : "";
                 
                 if (doctorSelect) {
@@ -216,13 +221,14 @@ function load() {
                 const savedInput = currentInputs[item.id];
                 const idValue = (savedInput && savedInput.idValue !== null) ? savedInput.idValue : (item.patient_id || "");
                 const nameValue = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
+                const otherValue = (savedInput && savedInput.otherValue !== null) ? savedInput.otherValue : (item.other || "");
                 const partValue = item.part ? ` [${item.part}]` : "";
                 
                 div.innerHTML = `
                     <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                     <div class="actions">
                         <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, 'waiting')" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, null)" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
 
                         <button onclick="openPartPanel(${item.id})" style="background:#607d8b; color:white; font-weight:bold;">部位</button>
@@ -231,6 +237,7 @@ function load() {
                             <option value="">--</option>
                             ${doctors.map(d => `<option value="${d}" ${item.doctor===d?'selected':''}>${d}</option>`).join("")}
                         </select>
+                        <input type="text" value="${otherValue}" placeholder="その他" id="other-${item.id}" style="padding:5px; width:100px; margin-left:5px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <button onclick="updateWithOption(${item.id}, 'waiting')" style="background:#ffa726;color:white">待ち</button>
                         <button onclick="startWithOption(${item.id})" style="background:#2196f3;color:white">開始</button>
                         <button onclick="finishScan(${item.id})" style="background:#4caf50;color:white">終了</button>
@@ -256,50 +263,44 @@ function load() {
     });
 }
 
-// 💡 綺麗にお掃除した安全なupdate関数
 function update(id, status, doctor) {
     const selectEl = document.querySelector(`select[onchange*="update(${id},"]`);
     const currentDoctor = selectEl ? selectEl.value : "";
+    const other = document.getElementById(`other-${id}`)?.value || "";
 
     let finalDoctor = currentDoctor;
     if (doctor !== undefined && doctor !== null) {
         finalDoctor = doctor;
-        if (selectEl) selectEl.value = doctor; // 画面表示をカチッと固定
+        if (selectEl) selectEl.value = doctor;
     }
 
-    // 💡 修正：もしステータスが送られてきても、現在の画面上のステータスや元のステータスが
-    // すでに「終了(done)」になっている場合は、勝手に上書きさせない防衛策を追加
-    const body = { id, doctor: finalDoctor };
-    
-    // 送られてきたstatusが 'done' 以外（待ち など）のとき、
-    // もしすでに終了している枠なら、ステータスは変更せずにdoctorだけを更新する
+    const body = { id, doctor: finalDoctor, other: other };
     if (status !== null && status !== undefined) {
-        // ※もし関数内で既存のstatusをチェックできる場合は、以下のようにガードします
-        if (status === 'done') {
-            body.status = 'done';
-        } else {
-            // 名前入力時にうっかり初期ステータス（待ち）が入ってきた場合は、
-            // すでに終了しているならstatusを送信データ(body)に含めない
-            body.status = status;
-        }
+        body.status = status;
     }
 
-    // 保存完了を待ってから画面をスマートに部分連動させる
     fetch("/api/update", { 
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify(body) 
-    }).then(() => {
-        // 30秒ごとの自動更新（load）が来てもドクター情報が最新版として上書きされるように同期
     });
 }
     
 function updateWithOption(id, status) {
     const name = document.getElementById(`name-${id}`)?.value;
     const pid = document.getElementById(`id-${id}`)?.value;
+    const other = document.getElementById(`other-${id}`)?.value || "";
+    
+    // 💡 決定版：statusが指定されていない（名前入力後のEnterなど）の場合は、
+    // サーバー側の自動防衛壁と連携するために status プロパティ自体を送信データに含めない！
+    const body = { id, patient_name: name, patient_id: pid, other: other };
+    if (status !== null && status !== undefined) {
+        body.status = status;
+    }
+    
     fetch("/api/update", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
-        body: JSON.stringify({id, status, patient_name: name, patient_id: pid}) 
+        body: JSON.stringify(body) 
     }).then(load);
 }
 
@@ -315,9 +316,10 @@ function startWithOption(id) {
 function finishScan(id) { 
     const name = document.getElementById(`name-${id}`)?.value || "";
     const pid = document.getElementById(`id-${id}`)?.value || "";
+    const other = document.getElementById(`other-${id}`)?.value || "";
     fetch("/api/update", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
-        body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid}) 
+        body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid, other: other}) 
     }).then(load); 
 }
 
@@ -348,7 +350,7 @@ function addSlot() {
 
 document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
 load();
-setInterval(load, 300000);
+setInterval(load, 300000); // 💡 5分自動更新に設定済み
 </script>
 </body>
 </html>
