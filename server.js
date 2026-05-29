@@ -139,32 +139,58 @@ app.post("/api/add", async (req, res) => {
 });
 
 // ==========================================
-// 🔄 【修正版】いつでも・どの枠でも変更できるデータ更新窓口
+// 🔄 【最強防衛版】すでに終了した枠を勝手に戻さないデータ更新窓口
 // ==========================================
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
     
-    // 💡 届いたデータ（存在する項目）だけを動的に組み立てる
-    let updateData = {};
-    
-    if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
-    if (status !== undefined && status !== null) updateData.status = status;
-    if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
-    if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
-    if (part !== undefined && part !== null) updateData.part = part;
-    if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
-    
-    // 💡 もしIDがない、または更新する中身が空っぽなら何もしない
-    if (!id || Object.keys(updateData).length === 0) {
+    if (!id) {
         return res.json({ status: "ignored" });
     }
-    
-    const { error } = await supabase.from('slots').update(updateData).eq('id', id);
-    if (error) {
-        console.error("データ更新エラー:", error);
-        return res.status(500).json(error);
+
+    try {
+        // 🛡️ 防衛策：現在のデータベースにある最新のステータスを1回チェックする
+        const { data: currentSlot, error: fetchError } = await supabase
+            .from('slots')
+            .select('status')
+            .eq('id', id)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        // 💡 届いたデータ（存在する項目）だけを動的に組み立てる
+        let updateData = {};
+        
+        if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
+        if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
+        if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
+        if (part !== undefined && part !== null) updateData.part = part;
+        if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
+        
+        // 🔒 ステータス上書きの鉄壁ガード
+        // すでにデータベース上が「終了 (done)」になっている場合は、
+        // 届いたステータスが何であれ、強制的に 'done' のまま固定（上書きを拒否）する！
+        if (currentSlot && currentSlot.status === 'done') {
+            updateData.status = 'done';
+        } else {
+            // まだ終了していない枠であれば、送られてきたステータスをそのまま適用
+            if (status !== undefined && status !== null) updateData.status = status;
+        }
+        
+        // もし更新する中身が空っぽなら何もしない
+        if (Object.keys(updateData).length === 0) {
+            return res.json({ status: "ignored" });
+        }
+        
+        const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
+        if (updateError) throw updateError;
+        
+        res.json({ status: "ok" });
+
+    } catch (err) {
+        console.error("データ更新エラー:", err);
+        return res.status(500).json({ error: "更新に失敗しました" });
     }
-    res.json({ status: "ok" });
 });
 // 読影
 app.post("/api/remote", async (req, res) => {
