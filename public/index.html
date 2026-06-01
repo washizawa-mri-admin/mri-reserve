@@ -105,8 +105,9 @@
 let currentEditId = null;
 let currentSide = "";
 const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
+const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"]; // 💡 判定用に追加
 let today = new Date().toISOString().split("T")[0];
-let lastLoadedDate = today; // 💡 追加：前回読み込んだ日付を記録
+let lastLoadedDate = today;
 document.getElementById("datePicker").value = today;
 
 function openPartPanel(id) {
@@ -168,13 +169,12 @@ function load(isDateChanged = false) {
             selectionEnd = activeElement.selectionEnd;
         }
 
-        // 💡 カレンダーで日付を切り替えた時は、前回の未保存入力を完全に破棄して強制リセット
         if (isDateChanged) {
             list.innerHTML = "";
         }
 
         const currentInputs = {};
-        if (!isDateChanged) { // 💡 同一日の自動更新時のみ、未保存入力を保持する
+        if (!isDateChanged) {
             data.forEach(item => {
                 const idInput = document.getElementById(`id-${item.id}`);
                 const nameInput = document.getElementById(`name-${item.id}`);
@@ -188,7 +188,6 @@ function load(isDateChanged = false) {
         let counts = { waiting: 0, scanning: 0, done: 0 };
         const existingSlots = list.querySelectorAll('.slot');
         
-        // 💡 日付変更がなく、かつ枠の数も変わらない場合だけ部分書き換え（入力中カーソル維持のため）
         if (!isDateChanged && existingSlots.length === data.length) {
             data.forEach((item, index) => {
                 const status = item.status || '';
@@ -197,9 +196,12 @@ function load(isDateChanged = false) {
                 const slotDiv = existingSlots[index];
                 slotDiv.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
                 
+                // 💡 【修正点】同一日の部分書き換えの時も、追加枠なら「追加枠」という文字に固定
                 const timeDiv = slotDiv.querySelector('.time');
                 if (timeDiv) {
-                    timeDiv.innerHTML = `${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}`;
+                    const isExtra = !baseTimes.includes(item.time);
+                    const displayTime = isExtra ? `<span style="color: #d63384;">追加枠</span>` : item.time;
+                    timeDiv.innerHTML = `${displayTime}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}`;
                 }
 
                 const idInput = slotDiv.querySelector(`#id-${item.id}`);
@@ -221,7 +223,6 @@ function load(isDateChanged = false) {
                 }
             });
         } else {
-            // 💡 日付が変わった、あるいは枠の数が変わった場合は完全にイチから描き直す
             list.innerHTML = "";
             data.forEach(item => {
                 const status = item.status || '';
@@ -234,8 +235,12 @@ function load(isDateChanged = false) {
                 const nameValue = item.patient_name || "";
                 const partValue = item.part ? ` [${item.part}]` : "";
                 
+                // 💡 【修正点】新規描画の際、baseTimes（基本枠）に含まれない時間なら「追加枠」に変更
+                const isExtra = !baseTimes.includes(item.time);
+                const displayTime = isExtra ? `<span style="color: #d63384;">追加枠</span>` : item.time;
+                
                 div.innerHTML = `
-                    <div class="time">${item.time}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
+                    <div class="time">${displayTime}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                     <div class="actions">
                         <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, null)" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
@@ -258,7 +263,6 @@ function load(isDateChanged = false) {
             });
         }
 
-        // 日付変更時はフォーカスを復元しない（別日の無関係な場所へ飛ぶのを防ぐ）
         if (!isDateChanged && activeId && document.getElementById(activeId)) {
             const inputEl = document.getElementById(activeId);
             inputEl.focus();
@@ -353,14 +357,13 @@ function addSlot() {
     fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(load);
 }
 
-// 💡 日付変更イベント発生時は明示的にフラグをtrueにしてloadを呼ぶ
 document.getElementById("datePicker").addEventListener("change", e => { 
     today = e.target.value; 
     load(true); 
 });
 
 load();
-setInterval(load, 300000); // 5分自動更新に設定済み
+setInterval(load, 300000);
 </script>
 </body>
 </html>
