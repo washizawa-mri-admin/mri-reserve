@@ -18,7 +18,6 @@
         table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
         th, td { border: 1px solid #000; padding: 4px 2px; text-align: center; overflow: hidden; }
         
-        /* ヘッダーの色を少し薄くして文字を見やすく */
         th { background: #eee; font-size: 10px; }
         
         .date-col { width: 45px; font-weight: bold; background: #f9f9f9; }
@@ -27,7 +26,7 @@
         .today-row { background: #fff9c4 !important; }
         .total-row { background: #eee; font-weight: bold; }
         
-        .count-cell { color: #000; }
+        .count-cell { color: #000; font-weight: bold; }
         .zero { color: #ccc; } /* 0件は薄くして目立たせない */
 
         .nav-btn { padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; }
@@ -55,34 +54,47 @@
 </div>
 
 <script>
-    // 指定された先生の順番（画像通り）
     const doctorOrder = ["鷲澤", "永野", "鷲澤匠","河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
     let allData = [];
 
     const now = new Date();
-    document.getElementById('monthPicker').value = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
+    // 💡 常にローカルタイムゾーンの「年-月」を初期値に正しく設定
+    const currentYear = now.getFullYear();
+    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('monthPicker').value = `${currentYear}-${currentMonth}`;
 
     async function loadData() {
         try {
-            const res = await fetch('/api/report/doctors');
+            // 💡 キャッシュに邪魔されないようタイムスタンプを付与して最新の集計APIを叩く
+            const res = await fetch(`/api/report/doctors?_ts=${Date.now()}`);
             allData = await res.json();
             renderStats();
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("データ読み込み失敗:", e); 
+        }
     }
 
     function renderStats() {
         const selectedMonth = document.getElementById('monthPicker').value;
-        const [year, month] = selectedMonth.split('-').map(Number);
+        if (!selectedMonth) return;
         
+        const [year, month] = selectedMonth.split('-').map(Number);
         document.getElementById('title-text').innerText = `${year}年${month}月 MRI撮影件数 集計表`;
         
-        // ヘッダー作成（指定の順番通り）
+        // ヘッダー作成
         const hrow = document.getElementById('header-row');
         hrow.innerHTML = `<th class="date-col">日付</th>` + 
                          doctorOrder.map(dr => `<th>${dr}</th>`).join('') + 
                          `<th class="total-col">合計</th>`;
 
-        const filteredData = allData.filter(d => d.date.startsWith(selectedMonth));
+        // 💡 ゼロパディング等の表記ブレを完全に吸収・統一して比較するための前処理
+        const targetMonthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const filteredData = allData.filter(d => {
+            if (!d.date) return false;
+            // APIから '2026-06-01' のような形式がきても最初の7文字 '2026-06' で綺麗に前方一致させる
+            return d.date.startsWith(targetMonthStr);
+        });
+
         const daysInMonth = new Date(year, month, 0).getDate();
         
         let tableHtml = "";
@@ -90,16 +102,21 @@
         doctorOrder.forEach(dr => drMonthlyTotals[dr] = 0);
         let grandTotal = 0;
 
+        // 本日の日付（比較用リセット）
+        const todayStr = new Date().toISOString().split('T')[0];
+
         for (let i = 1; i <= daysInMonth; i++) {
-            const dateStr = `${selectedMonth}-${String(i).padStart(2, '0')}`;
-            const isToday = dateStr === new Date().toISOString().split('T')[0];
+            const currentDayStr = `${targetMonthStr}-${String(i).padStart(2, '0')}`;
+            const isToday = currentDayStr === todayStr;
             
             let dayTotal = 0;
             let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
 
             doctorOrder.forEach(dr => {
-                const record = filteredData.find(d => d.date === dateStr && d.doctor === dr);
-                const count = record ? record.count : 0;
+                // 💡 医師名と日付を厳密にマッチング
+                const record = filteredData.find(d => d.date === currentDayStr && d.doctor === dr);
+                const count = record ? Number(record.count) : 0;
+                
                 rowHtml += `<td class="${count === 0 ? 'zero' : 'count-cell'}">${count}</td>`;
                 dayTotal += count;
                 drMonthlyTotals[dr] += count;
