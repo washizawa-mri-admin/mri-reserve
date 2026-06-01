@@ -14,19 +14,17 @@
 
         table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
         th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
-        .time-col { width: 50px; font-weight: bold; background: #fafafa; }
+        .time-col { font-weight: bold; background: #fafafa; }
         
         td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
-        
-        /* 🛡️ 【最優先固定】CSS側から強固に幅の比率を指定します（これでブラウザの無視を突破！） */
-        .name-cell { font-weight: bold; font-size: 10px; overflow: hidden; white-space: nowrap; width: 11.5% !important; }
-        .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; width: 3.5% !important; }
+        .name-cell { font-weight: bold; font-size: 10px; overflow: hidden; white-space: nowrap; }
+        .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; }
 
         .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
         .total-label { text-align: right; padding-right: 5px; }
 
-        .extra-row { color: #d63384; } /* 追加枠だとわかるように少しだけ色を変える（任意） */
+        .extra-row { color: #d63384; }
 
         @media print { .no-print { display: none; } }
     </style>
@@ -43,6 +41,8 @@
     </div>
 
     <table>
+        <colgroup>
+            <col style="width: 50px;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> </colgroup>
         <thead>
             <tr id="headerRow"><th class="time-col" rowspan="2">時間</th></tr>
             <tr id="subHeaderRow"></tr>
@@ -73,9 +73,8 @@
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
                 
-                // 💡 1日の合計幅（15%）を指定し、その中で氏名（11.5%）と部位（3.5%）を割り振ります
-                hRow.innerHTML += `<th colspan="2" style="width: 15%;">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                shRow.innerHTML += `<th class="name-cell">氏名</th><th class="part-cell">部位</th>`;
+                hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
+                shRow.innerHTML += `<th>氏名</th><th>部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
@@ -85,12 +84,9 @@
                 weekData[i] = await res.json();
             }
 
-            // 【1】基本の時間枠（固定）
             const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
-            
             let dailyCounts = [0, 0, 0, 0, 0, 0];
 
-            // 【2】固定枠の表示
             baseTimes.forEach(time => {
                 let row = `<tr><td class="time-col">${time}</td>`;
                 for(let i=0; i<6; i++) {
@@ -107,11 +103,9 @@
                 bRows.innerHTML += row + "</tr>";
             });
 
-            // 【3】追加枠（固定枠に入っていないデータを「追加枠」として表示）
             let maxExtras = 0;
             let extraSlotsByDay = {};
             for(let i=0; i<6; i++) {
-                // baseTimesに含まれない、かつ有効なデータがあるものを抽出
                 extraSlotsByDay[i] = weekData[i].filter(s => !baseTimes.includes(s.time) && (s.patient_name || s.part || s.status === 'done'));
                 if(extraSlotsByDay[i].length > maxExtras) maxExtras = extraSlotsByDay[i].length;
             }
