@@ -1,71 +1,14 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>ドクター別撮影件数（印刷用）</title>
-    <style>
-        /* A4縦に最適化 */
-        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; padding: 10px; background: #fff; color: #333; font-size: 11px; line-height: 1.2; }
-        .container { max-width: 800px; margin: auto; }
-        
-        .no-print { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; }
-        @media print { .no-print { display: none; } body { padding: 0; } }
-
-        h1 { font-size: 16px; margin: 0; text-align: center; }
-        
-        .month-selector { font-size: 12px; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
-        th, td { border: 1px solid #000; padding: 4px 2px; text-align: center; overflow: hidden; }
-        
-        th { background: #eee; font-size: 10px; }
-        
-        .date-col { width: 45px; font-weight: bold; background: #f9f9f9; }
-        .total-col { width: 50px; font-weight: bold; background: #f9f9f9; }
-        
-        .today-row { background: #fff9c4 !important; }
-        .total-row { background: #eee; font-weight: bold; }
-        
-        .count-cell { color: #000; font-weight: bold; }
-        .zero { color: #ccc; } /* 0件は薄くして目立たせない */
-
-        .nav-btn { padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <div class="no-print">
-        <a href="index.html" class="nav-btn">⬅ 戻る</a>
-        <div class="month-selector">
-            表示月: <input type="month" id="monthPicker" onchange="renderStats()">
-            <button onclick="window.print()" style="margin-left:10px; cursor:pointer;">🖨️ A4印刷</button>
-        </div>
-    </div>
-
-    <h1 id="title-text">MRI撮影件数 集計表</h1>
-
-    <table>
-        <thead>
-            <tr id="header-row"></tr>
-        </thead>
-        <tbody id="stats-body"></tbody>
-    </table>
-</div>
-
 <script>
     const doctorOrder = ["鷲澤", "永野", "鷲澤匠","河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
     let allData = [];
 
     const now = new Date();
-    // 💡 常にローカルタイムゾーンの「年-月」を初期値に正しく設定
     const currentYear = now.getFullYear();
     const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
     document.getElementById('monthPicker').value = `${currentYear}-${currentMonth}`;
 
     async function loadData() {
         try {
-            // 💡 キャッシュに邪魔されないようタイムスタンプを付与して最新の集計APIを叩く
             const res = await fetch(`/api/report/doctors?_ts=${Date.now()}`);
             allData = await res.json();
             renderStats();
@@ -78,8 +21,8 @@
         const selectedMonth = document.getElementById('monthPicker').value;
         if (!selectedMonth) return;
         
-        const [year, month] = selectedMonth.split('-').map(Number);
-        document.getElementById('title-text').innerText = `${year}年${month}月 MRI撮影件数 集計表`;
+        const [targetYear, targetMonth] = selectedMonth.split('-').map(Number);
+        document.getElementById('title-text').innerText = `${targetYear}年${targetMonth}月 MRI撮影件数 集計表`;
         
         // ヘッダー作成
         const hrow = document.getElementById('header-row');
@@ -87,34 +30,42 @@
                          doctorOrder.map(dr => `<th>${dr}</th>`).join('') + 
                          `<th class="total-col">合計</th>`;
 
-        // 💡 ゼロパディング等の表記ブレを完全に吸収・統一して比較するための前処理
-        const targetMonthStr = `${year}-${String(month).padStart(2, '0')}`;
-        const filteredData = allData.filter(d => {
-            if (!d.date) return false;
-            // APIから '2026-06-01' のような形式がきても最初の7文字 '2026-06' で綺麗に前方一致させる
-            return d.date.startsWith(targetMonthStr);
-        });
-
-        const daysInMonth = new Date(year, month, 0).getDate();
+        const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
         
         let tableHtml = "";
         let drMonthlyTotals = {};
         doctorOrder.forEach(dr => drMonthlyTotals[dr] = 0);
         let grandTotal = 0;
 
-        // 本日の日付（比較用リセット）
-        const todayStr = new Date().toISOString().split('T')[0];
+        const today = new Date();
+        const todayYear = today.getFullYear();
+        const todayMonth = today.getMonth() + 1;
+        const todayDate = today.getDate();
 
+        // 💡 1日〜末日までループ
         for (let i = 1; i <= daysInMonth; i++) {
-            const currentDayStr = `${targetMonthStr}-${String(i).padStart(2, '0')}`;
-            const isToday = currentDayStr === todayStr;
+            const isToday = (targetYear === todayYear && targetMonth === todayMonth && i === todayDate);
             
             let dayTotal = 0;
             let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
 
             doctorOrder.forEach(dr => {
-                // 💡 医師名と日付を厳密にマッチング
-                const record = filteredData.find(d => d.date === currentDayStr && d.doctor === dr);
+                // 💡 文字列の厳密一致ではなく、年・月・日を数値にバラして確実にマッチングするロジックに変更
+                const record = allData.find(d => {
+                    if (!d.date || d.doctor !== dr) return false;
+                    
+                    // "2026-06-15" や "2026-6-15" をハイフンで分解
+                    const parts = d.date.split('-');
+                    if (parts.length !== 3) return false;
+                    
+                    const dYear = Number(parts[0]);
+                    const dMonth = Number(parts[1]);
+                    const dDay = Number(parts[2]);
+                    
+                    // 数値として完全に一致するか判定（ゼロの有無を無視できる）
+                    return dYear === targetYear && dMonth === targetMonth && dDay === i;
+                });
+
                 const count = record ? Number(record.count) : 0;
                 
                 rowHtml += `<td class="${count === 0 ? 'zero' : 'count-cell'}">${count}</td>`;
@@ -139,6 +90,3 @@
 
     window.onload = loadData;
 </script>
-
-</body>
-</html>
