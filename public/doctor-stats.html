@@ -2,6 +2,7 @@
     const doctorOrder = ["鷲澤", "永野", "鷲澤匠","河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
     let allData = [];
 
+    // 初期値の月を設定
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
@@ -37,33 +38,30 @@
         doctorOrder.forEach(dr => drMonthlyTotals[dr] = 0);
         let grandTotal = 0;
 
-        const today = new Date();
-        const todayYear = today.getFullYear();
-        const todayMonth = today.getMonth() + 1;
-        const todayDate = today.getDate();
+        // 💡 今日の日付を「YYYY-MM-DD」形式で確実に取得（ゼロパディングなしの比較用）
+        const t = new Date();
+        const tYear = t.getFullYear();
+        const tMonth = t.getMonth() + 1;
+        const tDay = t.getDate();
 
-        // 💡 1日〜末日までループ
         for (let i = 1; i <= daysInMonth; i++) {
-            const isToday = (targetYear === todayYear && targetMonth === todayMonth && i === todayDate);
+            // 💡 安全な比較方法に修正
+            const isToday = (targetYear === tYear && targetMonth === tMonth && i === tDay);
             
             let dayTotal = 0;
             let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
 
             doctorOrder.forEach(dr => {
-                // 💡 文字列の厳密一致ではなく、年・月・日を数値にバラして確実にマッチングするロジックに変更
                 const record = allData.find(d => {
                     if (!d.date || d.doctor !== dr) return false;
                     
-                    // "2026-06-15" や "2026-6-15" をハイフンで分解
                     const parts = d.date.split('-');
                     if (parts.length !== 3) return false;
                     
-                    const dYear = Number(parts[0]);
-                    const dMonth = Number(parts[1]);
-                    const dDay = Number(parts[2]);
-                    
-                    // 数値として完全に一致するか判定（ゼロの有無を無視できる）
-                    return dYear === targetYear && dMonth === targetMonth && dDay === i;
+                    // 文字列を数値に変換して比較（これで桁数のズレを完全吸収）
+                    return Number(parts[0]) === targetYear && 
+                           Number(parts[1]) === targetMonth && 
+                           Number(parts[2]) === i;
                 });
 
                 const count = record ? Number(record.count) : 0;
