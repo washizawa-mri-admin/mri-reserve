@@ -164,7 +164,6 @@ function load(isDateChanged = false) {
         let selectionStart = 0;
         let selectionEnd = 0;
 
-        // 💡 修正：現在の入力カーソルの位置を正確に取得
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
             selectionStart = activeElement.selectionStart;
             selectionEnd = activeElement.selectionEnd;
@@ -238,11 +237,12 @@ function load(isDateChanged = false) {
                 const isExtra = !baseTimes.includes(item.time);
                 const displayTime = isExtra ? `<span style="color: #d63384;">追加枠</span>` : item.time;
                 
+                // 💡 【大修正】名前欄の Enter連動を廃止し、入力欄から離れたとき(onblur)に保存する形式に変更
                 div.innerHTML = `
                     <div class="time">${displayTime}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                     <div class="actions">
-                        <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onkeydown="if(event.key==='Enter') updateWithOption(${item.id}, null)" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" onblur="updateWithOption(${item.id}, null)" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onblur="updateWithOption(${item.id}, null)" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
 
                         <button onclick="openPartPanel(${item.id})" style="background:#607d8b; color:white; font-weight:bold;">部位</button>
@@ -262,12 +262,10 @@ function load(isDateChanged = false) {
             });
         }
 
-        // 💡 【大修正】エンターで確定された後、完全に同じ入力欄の、全く同じカーソル位置に強制復元する
         if (!isDateChanged && activeId) {
             const inputEl = document.getElementById(activeId);
             if (inputEl) {
                 inputEl.focus();
-                // ほんの一瞬（0ミリ秒）遅らせて処理することで、ブラウザのデフォルト挙動に邪魔されずに確実にカーソルを元の位置に戻します
                 setTimeout(() => {
                     if (inputEl.setSelectionRange) {
                         inputEl.setSelectionRange(selectionStart, selectionEnd);
@@ -319,7 +317,6 @@ function updateWithOption(id, status) {
     }).then(load);
 }
 
-// 💡 修正：開始、終了、読影、削除の直後は、入力中ではないのでフォーカスを外すために load(true) 的にリセットをかける
 function startWithOption(id) {
     const name = document.getElementById(`name-${id}`)?.value || "";
     const pid = document.getElementById(`id-${id}`)?.value || "";
