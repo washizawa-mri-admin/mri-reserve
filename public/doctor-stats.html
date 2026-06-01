@@ -1,12 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ドクター別撮影件数（印刷用）</title>
+    <style>
+        /* A4縦に最適化 */
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif; padding: 10px; background: #fff; color: #333; font-size: 11px; line-height: 1.2; }
+        .container { max-width: 800px; margin: auto; }
+        
+        .no-print { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #f8f9fa; padding: 10px; border-radius: 6px; }
+        @media print { .no-print { display: none; } body { padding: 0; } }
+
+        h1 { font-size: 16px; margin: 0; text-align: center; }
+        
+        .month-selector { font-size: 12px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        th, td { border: 1px solid #000; padding: 4px 2px; text-align: center; overflow: hidden; }
+        
+        th { background: #eee; font-size: 10px; }
+        
+        .date-col { width: 45px; font-weight: bold; background: #f9f9f9; }
+        .total-col { width: 50px; font-weight: bold; background: #f9f9f9; }
+        
+        .today-row { background: #fff9c4 !important; }
+        .total-row { background: #eee; font-weight: bold; }
+        
+        .count-cell { color: #000; font-weight: bold; }
+        .zero { color: #ccc; } /* 0件は薄くして目立たせない */
+
+        .nav-btn { padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="no-print">
+        <a href="index.html" class="nav-btn">⬅ 戻る</a>
+        <div class="month-selector">
+            表示月: <input type="month" id="monthPicker" onchange="renderStats()">
+            <button onclick="window.print()" style="margin-left:10px; cursor:pointer;">🖨️ A4印刷</button>
+        </div>
+    </div>
+
+    <h1 id="title-text">MRI撮影件数 集計表</h1>
+
+    <table>
+        <thead>
+            <tr id="header-row"></tr>
+        </thead>
+        <tbody id="stats-body"></tbody>
+    </table>
+</div>
+
 <script>
     const doctorOrder = ["鷲澤", "永野", "鷲澤匠","河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
     let allData = [];
 
-    // 初期値の月を設定
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
-    document.getElementById('monthPicker').value = `${currentYear}-${currentMonth}`;
+    // 💡 画面が完全に読み込まれてから初期設定とデータ取得を行う
+    window.onload = async function() {
+        // 初期月の設定（エラー回避のためここへ移動）
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+        document.getElementById('monthPicker').value = `${currentYear}-${currentMonth}`;
+
+        await loadData();
+    };
 
     async function loadData() {
         try {
@@ -38,14 +98,12 @@
         doctorOrder.forEach(dr => drMonthlyTotals[dr] = 0);
         let grandTotal = 0;
 
-        // 💡 今日の日付を「YYYY-MM-DD」形式で確実に取得（ゼロパディングなしの比較用）
         const t = new Date();
         const tYear = t.getFullYear();
         const tMonth = t.getMonth() + 1;
         const tDay = t.getDate();
 
         for (let i = 1; i <= daysInMonth; i++) {
-            // 💡 安全な比較方法に修正
             const isToday = (targetYear === tYear && targetMonth === tMonth && i === tDay);
             
             let dayTotal = 0;
@@ -58,7 +116,7 @@
                     const parts = d.date.split('-');
                     if (parts.length !== 3) return false;
                     
-                    // 文字列を数値に変換して比較（これで桁数のズレを完全吸収）
+                    // 💡 年・月・日を数値に変換して比較（桁数のブレを完全吸収）
                     return Number(parts[0]) === targetYear && 
                            Number(parts[1]) === targetMonth && 
                            Number(parts[2]) === i;
@@ -85,6 +143,7 @@
         
         document.getElementById('stats-body').innerHTML = tableHtml + totalRowHtml;
     }
-
-    window.onload = loadData;
 </script>
+
+</body>
+</html>
