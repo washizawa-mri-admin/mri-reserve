@@ -237,12 +237,12 @@ function load(isDateChanged = false) {
                 const isExtra = !baseTimes.includes(item.time);
                 const displayTime = isExtra ? `<span style="color: #d63384;">追加枠</span>` : item.time;
                 
-                // 💡 【修正点】onblur を onchange に変更
+                // 💡 【大修正】saveOnly を呼び出すように変更（裏で保存するが、画面の再描画 load は呼ばない）
                 div.innerHTML = `
                     <div class="time">${displayTime}${item.is_remote ? '<br><span class="patient-tag">読影出</span>' : ''}</div>
                     <div class="actions">
-                        <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" onchange="updateWithOption(${item.id}, null)" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
-                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onchange="updateWithOption(${item.id}, null)" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${idValue}" placeholder="ID" id="id-${item.id}" onchange="saveOnly(${item.id})" style="padding:5px; width:70px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
+                        <input type="text" value="${nameValue}" placeholder="名前" id="name-${item.id}" onchange="saveOnly(${item.id})" style="padding:5px; width:130px; margin-right:5px; border:1px solid #ccc; border-radius:4px;">
                         <span style="font-size:0.8em; color:#666; margin-right:10px;">${partValue}</span>
 
                         <button onclick="openPartPanel(${item.id})" style="background:#607d8b; color:white; font-weight:bold;">部位</button>
@@ -299,6 +299,17 @@ function update(id, status, doctor) {
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify(body) 
+    });
+}
+
+// 💡 【新設】入力欄の変更時に「裏で保存するだけ」の関数。load()を呼ばないのでTabキー移動を阻害しない。
+function saveOnly(id) {
+    const name = document.getElementById(`name-${id}`)?.value;
+    const pid = document.getElementById(`id-${id}`)?.value;
+    fetch("/api/update", { 
+        method: "POST", 
+        headers: {"Content-Type":"application/json"}, 
+        body: JSON.stringify({ id, patient_name: name, patient_id: pid }) 
     });
 }
     
@@ -366,7 +377,15 @@ document.getElementById("datePicker").addEventListener("change", e => {
 });
 
 load();
-setInterval(load, 300000);
+
+// 💡 【修正点】5分おきの定期自動更新時、ユーザーが文字入力中の場合はロードをスキップする安全策
+setInterval(() => {
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return; // 入力中なら更新をスキップして邪魔しない
+    }
+    load();
+}, 300000);
 </script>
 </body>
 </html>
