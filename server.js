@@ -233,40 +233,64 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★追加した集計API: ドクター別の撮影一覧（1,000件制限突破＆時間外カウント完全対応版）
+// ★追加した集計API: ドクター別の撮影一覧（過去固定データ＋直近リアルタイム＋時間外の完全合体版）
 app.get("/api/report/doctors", async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // 1. 過去の確定データ（4月1日より前）を別テーブルから取得
+    const { data: summaryData, error: summaryError } = await supabase
+      .from('monthly_summary')
+      .select('year_month, doctor, total_count');
+
+    if (summaryError) throw summaryError;
+
+    // 2. 直近（2026年4月1日以降）のリアルタイムデータを取得
+    const { data: realTimeData, error: realTimeError } = await supabase
       .from('slots')
-      .select('date, doctor, status, is_extra') // 💡is_extra も一緒に取得
+      .select('date, doctor, status, is_extra')
       .eq('status', 'done')
       .not('doctor', 'is', null)
       .neq('doctor', '')
+      .gte('date', '2026-04-01')
       .range(0, 99999);
 
-    if (error) throw error;
+    if (realTimeError) throw realTimeError;
 
-    const stats = data.reduce((acc, curr) => {
-      const key = `${curr.date}_${curr.doctor}`;
-      if (!acc[key]) acc[key] = { date: curr.date, doctor: curr.doctor, count: 0 };
-      
-      // 💡グラフ用APIと同じロジック：is_extra に2以上の数値が入っていれば、その分をちゃんと加算する
-      let rowCount = 1;
-      if (curr.is_extra && Number(curr.is_extra) > 1) {
-        rowCount = Number(curr.is_extra);
-      }
-      
-      acc[key].count += rowCount;
-      return acc;
-    }, {});
+    // 📦 2つのデータを綺麗に集計してまとめる箱
+    const stats = {};
+
+    // ① 過去の確定データを箱に詰める
+    if (summaryData) {
+      summaryData.forEach(r => {
+        // 画面側が日付（YYYY-MM-DD）で探せるように、年月（例: 2026-03）に「-01」を補正して1日扱いで入れる
+        const key = `${r.year_month}-01_${r.doctor}`;
+        if (!stats[key]) stats[key] = { date: `${r.year_month}-01`, doctor: r.doctor, count: 0 };
+        stats[key].count += Number(r.total_count);
+      });
+    }
+
+    // ② 直近のリアルタイムデータを時間外も計算して箱に足し算する
+    if (realTimeData) {
+      realTimeData.forEach(r => {
+        const key = `${r.date}_${r.doctor}`;
+        if (!stats[key]) stats[key] = { date: r.date, doctor: r.doctor, count: 0 };
+
+        let rowCount = 1;
+        if (r.is_extra && Number(r.is_extra) > 1) {
+          rowCount = Number(r.is_extra);
+        }
+
+        stats[key].count += rowCount;
+      });
+    }
 
     res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
 
   } catch (err) {
-    console.error("ドクター別集計APIエラー:", err);
+    console.error("ドクター別集計API（完全版）エラー:", err);
     return res.status(500).json({ error: "集計データの取得に失敗しました" });
   }
 });
+
 // ==========================================
 // 📊 【完全版】過去データ固定化 ＝ 加算式超軽量レポートAPI
 // ==========================================
