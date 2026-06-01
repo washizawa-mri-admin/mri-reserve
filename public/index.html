@@ -106,6 +106,7 @@ let currentEditId = null;
 let currentSide = "";
 const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
 let today = new Date().toISOString().split("T")[0];
+let lastLoadedDate = today; // 💡 追加：前回読み込んだ日付を記録
 document.getElementById("datePicker").value = today;
 
 function openPartPanel(id) {
@@ -153,7 +154,7 @@ function closePartPanel() {
     currentEditId = null;
 }
 
-function load() {
+function load(isDateChanged = false) {
     fetch(`/api/slots?date=${today}`).then(res => res.json()).then(data => {
         const list = document.getElementById("list"); 
         
@@ -167,21 +168,28 @@ function load() {
             selectionEnd = activeElement.selectionEnd;
         }
 
+        // 💡 カレンダーで日付を切り替えた時は、前回の未保存入力を完全に破棄して強制リセット
+        if (isDateChanged) {
+            list.innerHTML = "";
+        }
+
         const currentInputs = {};
-        data.forEach(item => {
-            const idInput = document.getElementById(`id-${item.id}`);
-            const nameInput = document.getElementById(`name-${item.id}`);
-            currentInputs[item.id] = {
-                idValue: idInput ? idInput.value : null,
-                nameValue: nameInput ? nameInput.value : null
-            };
-        });
+        if (!isDateChanged) { // 💡 同一日の自動更新時のみ、未保存入力を保持する
+            data.forEach(item => {
+                const idInput = document.getElementById(`id-${item.id}`);
+                const nameInput = document.getElementById(`name-${item.id}`);
+                currentInputs[item.id] = {
+                    idValue: idInput ? idInput.value : null,
+                    nameValue: nameInput ? nameInput.value : null
+                };
+            });
+        }
 
         let counts = { waiting: 0, scanning: 0, done: 0 };
-
         const existingSlots = list.querySelectorAll('.slot');
         
-        if (existingSlots.length === data.length) {
+        // 💡 日付変更がなく、かつ枠の数も変わらない場合だけ部分書き換え（入力中カーソル維持のため）
+        if (!isDateChanged && existingSlots.length === data.length) {
             data.forEach((item, index) => {
                 const status = item.status || '';
                 if (counts.hasOwnProperty(status)) counts[status]++;
@@ -213,6 +221,7 @@ function load() {
                 }
             });
         } else {
+            // 💡 日付が変わった、あるいは枠の数が変わった場合は完全にイチから描き直す
             list.innerHTML = "";
             data.forEach(item => {
                 const status = item.status || '';
@@ -221,9 +230,8 @@ function load() {
                 const div = document.createElement("div");
                 div.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
                 
-                const savedInput = currentInputs[item.id];
-                const idValue = (savedInput && savedInput.idValue !== null) ? savedInput.idValue : (item.patient_id || "");
-                const nameValue = (savedInput && savedInput.nameValue !== null) ? savedInput.nameValue : (item.patient_name || "");
+                const idValue = item.patient_id || "";
+                const nameValue = item.patient_name || "";
                 const partValue = item.part ? ` [${item.part}]` : "";
                 
                 div.innerHTML = `
@@ -250,7 +258,8 @@ function load() {
             });
         }
 
-        if (activeId && document.getElementById(activeId)) {
+        // 日付変更時はフォーカスを復元しない（別日の無関係な場所へ飛ぶのを防ぐ）
+        if (!isDateChanged && activeId && document.getElementById(activeId)) {
             const inputEl = document.getElementById(activeId);
             inputEl.focus();
             if (inputEl.setSelectionRange) {
@@ -344,7 +353,12 @@ function addSlot() {
     fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(load);
 }
 
-document.getElementById("datePicker").addEventListener("change", e => { today = e.target.value; load(); });
+// 💡 日付変更イベント発生時は明示的にフラグをtrueにしてloadを呼ぶ
+document.getElementById("datePicker").addEventListener("change", e => { 
+    today = e.target.value; 
+    load(true); 
+});
+
 load();
 setInterval(load, 300000); // 5分自動更新に設定済み
 </script>
