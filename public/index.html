@@ -105,7 +105,7 @@
 let currentEditId = null;
 let currentSide = "";
 const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
-const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"]; // 💡 判定用に追加
+const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
 let today = new Date().toISOString().split("T")[0];
 let lastLoadedDate = today;
 document.getElementById("datePicker").value = today;
@@ -164,6 +164,7 @@ function load(isDateChanged = false) {
         let selectionStart = 0;
         let selectionEnd = 0;
 
+        // 💡 修正：現在の入力カーソルの位置を正確に取得
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
             selectionStart = activeElement.selectionStart;
             selectionEnd = activeElement.selectionEnd;
@@ -196,7 +197,6 @@ function load(isDateChanged = false) {
                 const slotDiv = existingSlots[index];
                 slotDiv.className = `slot status-${status} ${item.is_remote ? 'remote-active' : ''}`;
                 
-                // 💡 【修正点】同一日の部分書き換えの時も、追加枠なら「追加枠」という文字に固定
                 const timeDiv = slotDiv.querySelector('.time');
                 if (timeDiv) {
                     const isExtra = !baseTimes.includes(item.time);
@@ -235,7 +235,6 @@ function load(isDateChanged = false) {
                 const nameValue = item.patient_name || "";
                 const partValue = item.part ? ` [${item.part}]` : "";
                 
-                // 💡 【修正点】新規描画の際、baseTimes（基本枠）に含まれない時間なら「追加枠」に変更
                 const isExtra = !baseTimes.includes(item.time);
                 const displayTime = isExtra ? `<span style="color: #d63384;">追加枠</span>` : item.time;
                 
@@ -263,11 +262,17 @@ function load(isDateChanged = false) {
             });
         }
 
-        if (!isDateChanged && activeId && document.getElementById(activeId)) {
+        // 💡 【大修正】エンターで確定された後、完全に同じ入力欄の、全く同じカーソル位置に強制復元する
+        if (!isDateChanged && activeId) {
             const inputEl = document.getElementById(activeId);
-            inputEl.focus();
-            if (inputEl.setSelectionRange) {
-                inputEl.setSelectionRange(selectionStart, selectionEnd);
+            if (inputEl) {
+                inputEl.focus();
+                // ほんの一瞬（0ミリ秒）遅らせて処理することで、ブラウザのデフォルト挙動に邪魔されずに確実にカーソルを元の位置に戻します
+                setTimeout(() => {
+                    if (inputEl.setSelectionRange) {
+                        inputEl.setSelectionRange(selectionStart, selectionEnd);
+                    }
+                }, 0);
             }
         }
 
@@ -314,13 +319,14 @@ function updateWithOption(id, status) {
     }).then(load);
 }
 
+// 💡 修正：開始、終了、読影、削除の直後は、入力中ではないのでフォーカスを外すために load(true) 的にリセットをかける
 function startWithOption(id) {
     const name = document.getElementById(`name-${id}`)?.value || "";
     const pid = document.getElementById(`id-${id}`)?.value || "";
     fetch("/api/start", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, patient_name: name, patient_id: pid}) 
-    }).then(load);
+    }).then(() => load(true));
 }
 
 function finishScan(id) { 
@@ -329,7 +335,7 @@ function finishScan(id) {
     fetch("/api/update", { 
         method: "POST", headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, status: 'done', patient_name: name, patient_id: pid}) 
-    }).then(load); 
+    }).then(() => load(true)); 
 }
 
 function requestRemote(id) {
@@ -340,7 +346,7 @@ function requestRemote(id) {
         method: "POST", 
         headers: {"Content-Type":"application/json"}, 
         body: JSON.stringify({id, patient_id: pid, patient_name: name}) 
-    }).then(load);
+    }).then(() => load(true));
 }
     
 function deleteSlot(id) { 
@@ -349,12 +355,12 @@ function deleteSlot(id) {
             method: "POST", 
             headers: {"Content-Type":"application/json"}, 
             body: JSON.stringify({id}) 
-        }).then(load); 
+        }).then(() => load(true)); 
     }
 }
     
 function addSlot() {
-    fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(load);
+    fetch("/api/add", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ date: today }) }).then(() => load(true));
 }
 
 document.getElementById("datePicker").addEventListener("change", e => { 
