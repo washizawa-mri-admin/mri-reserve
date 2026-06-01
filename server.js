@@ -233,23 +233,30 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★追加した集計API: ドクター別の撮影一覧（1,000件制限を突破＆有効データに絞り込み版）
+// ★追加した集計API: ドクター別の撮影一覧（1,000件制限突破＆時間外カウント完全対応版）
 app.get("/api/report/doctors", async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('slots')
-      .select('date, doctor, status')
-      .eq('status', 'done') // 💡撮影終了した枠だけを正確にカウント！
+      .select('date, doctor, status, is_extra') // 💡is_extra も一緒に取得
+      .eq('status', 'done')
       .not('doctor', 'is', null)
       .neq('doctor', '')
-      .range(0, 99999); // 💡Supabaseの1000件制限を強制突破！
+      .range(0, 99999);
 
     if (error) throw error;
 
     const stats = data.reduce((acc, curr) => {
       const key = `${curr.date}_${curr.doctor}`;
       if (!acc[key]) acc[key] = { date: curr.date, doctor: curr.doctor, count: 0 };
-      acc[key].count += 1;
+      
+      // 💡グラフ用APIと同じロジック：is_extra に2以上の数値が入っていれば、その分をちゃんと加算する
+      let rowCount = 1;
+      if (curr.is_extra && Number(curr.is_extra) > 1) {
+        rowCount = Number(curr.is_extra);
+      }
+      
+      acc[key].count += rowCount;
       return acc;
     }, {});
 
@@ -260,7 +267,6 @@ app.get("/api/report/doctors", async (req, res) => {
     return res.status(500).json({ error: "集計データの取得に失敗しました" });
   }
 });
-
 // ==========================================
 // 📊 【完全版】過去データ固定化 ＝ 加算式超軽量レポートAPI
 // ==========================================
