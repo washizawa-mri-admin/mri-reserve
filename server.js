@@ -233,24 +233,32 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★追加した集計API: ドクター別の撮影一覧
+// ★追加した集計API: ドクター別の撮影一覧（1,000件制限を突破＆有効データに絞り込み版）
 app.get("/api/report/doctors", async (req, res) => {
-  const { data, error } = await supabase
-    .from('slots')
-    .select('date, doctor')
-    .not('doctor', 'is', null)
-    .neq('doctor', '');
+  try {
+    const { data, error } = await supabase
+      .from('slots')
+      .select('date, doctor, status')
+      .eq('status', 'done') // 💡撮影終了した枠だけを正確にカウント！
+      .not('doctor', 'is', null)
+      .neq('doctor', '')
+      .range(0, 99999); // 💡Supabaseの1000件制限を強制突破！
 
-  if (error) return res.status(500).json(error);
+    if (error) throw error;
 
-  const stats = data.reduce((acc, curr) => {
-    const key = `${curr.date}_${curr.doctor}`;
-    if (!acc[key]) acc[key] = { date: curr.date, doctor: curr.doctor, count: 0 };
-    acc[key].count += 1;
-    return acc;
-  }, {});
+    const stats = data.reduce((acc, curr) => {
+      const key = `${curr.date}_${curr.doctor}`;
+      if (!acc[key]) acc[key] = { date: curr.date, doctor: curr.doctor, count: 0 };
+      acc[key].count += 1;
+      return acc;
+    }, {});
 
-  res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
+    res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
+
+  } catch (err) {
+    console.error("ドクター別集計APIエラー:", err);
+    return res.status(500).json({ error: "集計データの取得に失敗しました" });
+  }
 });
 
 // ==========================================
