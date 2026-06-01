@@ -71,7 +71,7 @@
                 let d = new Date(monday); d.setDate(d.getDate() + i);
                 dates.push(d.toISOString().split("T")[0]);
                 hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                shRow.innerHTML += `<th style="width: 13%;">氏名</th><th style="width: 3%;">部位</th>`;
+                shRow.innerHTML += `<th style="width: 33mm !important;">氏名</th><th style="width: 11mm !important;">部位</th>`;
             }
             document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
 
