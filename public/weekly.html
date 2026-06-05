@@ -104,13 +104,21 @@
     const parts = ["頚椎","胸椎","腰椎","肩","肘","手","股関節","大腿","膝","下腿","足関節"];
     let curId = null, curP = "", curSide = "";
 
-    document.getElementById('dateJump').value = currentFocusDate.toISOString().split('T')[0];
+    // 💡 日本時間のタイムゾーンに安全に準拠した YYYY-MM-DD 生成関数
+    function formatDateStr(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    document.getElementById('dateJump').value = formatDateStr(currentFocusDate);
 
     function isMobile() { return window.innerWidth <= 600; }
 
     function move(days) {
         currentFocusDate.setDate(currentFocusDate.getDate() + days);
-        document.getElementById('dateJump').value = currentFocusDate.toISOString().split('T')[0];
+        document.getElementById('dateJump').value = formatDateStr(currentFocusDate);
         refresh();
     }
 
@@ -133,8 +141,11 @@
 
     async function loadWeekTable() {
         const monday = new Date(currentFocusDate);
-        const day = monday.getDay() || 7;
-        monday.setDate(monday.getDate() - day + 1);
+        const currentDayNum = monday.getDay(); // 0:日, 1:月, 2:火...
+        
+        // 💡 【大修正】月曜日を基準点にするロジックを確実にズレない数式に変更
+        const distanceToMonday = currentDayNum === 0 ? -6 : 1 - currentDayNum;
+        monday.setDate(monday.getDate() + distanceToMonday);
 
         const header = document.getElementById("dateHeader");
         const body = document.getElementById("tableBody");
@@ -142,13 +153,20 @@
         body.innerHTML = '';
         const dates = [];
         const dayNames = ["月","火","水","木","金","土"];
+        
         for(let i=0; i<6; i++) {
             let d = new Date(monday);
             d.setDate(d.getDate() + i);
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = formatDateStr(d);
             dates.push(dateStr);
             header.innerHTML += `<th>${d.getMonth()+1}/${d.getDate()}(${dayNames[i]})</th>`;
         }
+
+        // 💡 週の表示パネル（例: 6/1 ~ 6/6）を更新
+        const firstDate = new Date(monday);
+        const lastDate = new Date(monday);
+        lastDate.setDate(lastDate.getDate() + 5);
+        document.getElementById("weekRangeDisplay").innerText = `(${firstDate.getMonth()+1}/${firstDate.getDate()} ～ ${lastDate.getMonth()+1}/${lastDate.getDate()})`;
 
         const weekData = await Promise.all(dates.map(d => fetch(`/api/slots?date=${d}`).then(res => res.json())));
         times.forEach(t => {
@@ -169,7 +187,7 @@
 
     async function loadDailyList() {
         const listDiv = document.getElementById("mobileList");
-        const dateStr = currentFocusDate.toISOString().split('T')[0];
+        const dateStr = formatDateStr(currentFocusDate);
         const res = await fetch(`/api/slots?date=${dateStr}`);
         const data = await res.json();
         
@@ -222,7 +240,6 @@
                 }
             });
             
-            // 固定パーツリストになければ「その他」ボタンを緑（active）にする
             if(!matchFound && curP !== "") {
                 const otherBtn = document.getElementById("btn-other-part");
                 if(otherBtn) {
@@ -231,7 +248,6 @@
                 }
             }
         } else {
-            // 新規枠を開くときは「その他」ボタンのテキストを初期化
             const otherBtn = document.getElementById("btn-other-part");
             if(otherBtn) otherBtn.innerText = "その他 (手入力)";
         }
@@ -269,22 +285,21 @@
         b.onclick = () => {
             document.querySelectorAll('#partsGrid .btn-opt').forEach(x => x.classList.remove('active'));
             b.classList.add('active'); curP = p;
-            // 既存部位を選んだら「その他」表記をリセット
             document.getElementById("btn-other-part").innerText = "その他 (手入力)";
         };
         pGrid.appendChild(b);
     });
 
-    // 💡 新設：「その他」手入力ボタンを生成してグリッド末尾に配置
     const otherBtn = document.createElement("div");
     otherBtn.className = "btn-opt";
     otherBtn.id = "btn-other-part";
+    otherBtn.innerText = "other (手入力)";
     otherBtn.innerText = "その他 (手入力)";
     otherBtn.style.background = "#eceff1";
     otherBtn.style.fontWeight = "bold";
     otherBtn.onclick = () => {
         const customName = prompt("部位の名称を自由に入力してください（例：手根管、大腿骨など）");
-        if (customName === null) return; // キャンセル時
+        if (customName === null) return; 
         
         const trimmed = customName.trim();
         if(trimmed !== "") {
