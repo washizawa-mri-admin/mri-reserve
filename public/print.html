@@ -1,4 +1,66 @@
-<script>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI 1週間予約表（A4横）</title>
+    <style>
+        @page { size: A4 landscape; margin: 5mm; }
+        body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
+        
+        .no-print { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #999; background: #fff; border-radius: 4px; font-size: 12px; text-decoration: none; color: black; display: inline-block; }
+        .btn:hover { background: #eee; }
+        .btn-back { background: #666; color: white; border: none; }
+
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
+        th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
+        .time-col { font-weight: bold; background: #fafafa; }
+        
+        td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
+        .name-cell { font-weight: bold; font-size: 18px; overflow: hidden; white-space: nowrap; }
+        .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; }
+        
+        .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
+        .total-label { text-align: right; padding-right: 5px; }
+
+        .extra-row { color: #d63384; }
+
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <a href="index.html" class="btn btn-back">🏠 予約管理に戻る</a>
+        <div style="flex-grow: 1; text-align: center;">
+            <button class="btn" onclick="shiftWeek(-1)">◀ 前の週</button>
+            <span id="weekTitle" style="margin: 0 15px; font-weight:bold;"></span>
+            <button class="btn" onclick="shiftWeek(1)">次の週 ▶</button>
+        </div>
+        <button class="btn" onclick="window.print()">🖨️ A4横で印刷</button>
+    </div>
+
+    <table>
+        <colgroup>
+            <col style="width: 50px;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+            <col style="width: 12%;">  <col style="width: 3.5%;"> 
+        </colgroup>
+        <thead>
+            <tr id="headerRow"><th class="time-col" rowspan="2">時間</th></tr>
+            <tr id="subHeaderRow"></tr>
+        </thead>
+        <tbody id="bodyRows"></tbody>
+        <tfoot>
+            <tr id="totalRow" class="total-row"><td class="total-label">合計</td></tr>
+        </tfoot>
+    </table>
+
+    <script>
     // 💡 日本時間に完全に合わせた安全な YYYY-MM-DD 生成関数
     function formatDateStr(date) {
         const y = date.getFullYear();
@@ -105,3 +167,6 @@
     }
     load();
 </script>
+
+</body>
+</html>
