@@ -1,137 +1,107 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>MRI 1週間予約表（A4横）</title>
-    <style>
+<script>
+    // 💡 日本時間に完全に合わせた安全な YYYY-MM-DD 生成関数
+    function formatDateStr(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
 
-        @page { size: A4 landscape; margin: 5mm; }
-        body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
+    // 💡 【超重要】時間を 00:00:00 に初期化して、時差による日付跨ぎを完全に防ぐ
+    function getMonday(d) { 
+        let date = new Date(d); 
+        date.setHours(0, 0, 0, 0); // 👈 時間・分・秒・ミリ秒をすべて 0 に固定！
         
-        .no-print { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; background: #f0f0f0; padding: 10px; border-radius: 5px; }
-        .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #999; background: #fff; border-radius: 4px; font-size: 12px; text-decoration: none; color: black; display: inline-block; }
-        .btn:hover { background: #eee; }
-        .btn-back { background: #666; color: white; border: none; }
+        let dayNum = date.getDay(); // 0:日, 1:月, 2:火...
+        let distanceToMonday = dayNum === 0 ? -6 : 1 - dayNum;
+        date.setDate(date.getDate() + distanceToMonday);
+        return date;
+    }
 
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
-        th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
-        .time-col { font-weight: bold; background: #fafafa; }
+    let monday = getMonday(new Date());
+    
+    async function load() {
+        const hRow = document.getElementById("headerRow");
+        const shRow = document.getElementById("subHeaderRow");
+        const bRows = document.getElementById("bodyRows");
+        const tRow = document.getElementById("totalRow");
         
-        td { border: 1px solid #000; padding: 0; text-align: center; height: 32px; vertical-align: middle; }
-        .name-cell { font-weight: bold; font-size: 18px; overflow: hidden; white-space: nowrap; }
-        .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; }
+        hRow.innerHTML = '<th class="time-col" rowspan="2">時間</th>';
+        shRow.innerHTML = ''; bRows.innerHTML = "";
+        tRow.innerHTML = '<td class="total-label">合計</td>';
         
-        .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
-        .total-label { text-align: right; padding-right: 5px; }
-
-        .extra-row { color: #d63384; }
-
-        @media print { .no-print { display: none; } }
-    </style>
-</head>
-<body>
-    <div class="no-print">
-        <a href="index.html" class="btn btn-back">🏠 予約管理に戻る</a>
-        <div style="flex-grow: 1; text-align: center;">
-            <button class="btn" onclick="shiftWeek(-1)">◀ 前の週</button>
-            <span id="weekTitle" style="margin: 0 15px; font-weight:bold;"></span>
-            <button class="btn" onclick="shiftWeek(1)">次の週 ▶</button>
-        </div>
-        <button class="btn" onclick="window.print()">🖨️ A4横で印刷</button>
-    </div>
-
-    <table>
-        <colgroup>
-            <col style="width: 50px;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> <col style="width: 12%;">  <col style="width: 3.5%;"> </colgroup>
-        <thead>
-            <tr id="headerRow"><th class="time-col" rowspan="2">時間</th></tr>
-            <tr id="subHeaderRow"></tr>
-        </thead>
-        <tbody id="bodyRows"></tbody>
-        <tfoot>
-            <tr id="totalRow" class="total-row"><td class="total-label">合計</td></tr>
-        </tfoot>
-    </table>
-
-    <script>
-        let monday = getMonday(new Date());
-        function getMonday(d) { let date = new Date(d); let day = date.getDay(), diff = date.getDate() - day + (day == 0 ? -6 : 1); return new Date(date.setDate(diff)); }
+        const days = ['月','火','水','木','金','土'];
+        const dates = [];
         
-        async function load() {
-            const hRow = document.getElementById("headerRow");
-            const shRow = document.getElementById("subHeaderRow");
-            const bRows = document.getElementById("bodyRows");
-            const tRow = document.getElementById("totalRow");
+        for(let i=0; i<6; i++) {
+            let d = new Date(monday); 
+            d.setHours(0, 0, 0, 0); // 👈 ループ内でも念のため時間を 0 に固定
+            d.setDate(d.getDate() + i);
+            dates.push(formatDateStr(d)); 
             
-            hRow.innerHTML = '<th class="time-col" rowspan="2">時間</th>';
-            shRow.innerHTML = ''; bRows.innerHTML = "";
-            tRow.innerHTML = '<td class="total-label">合計</td>';
-            
-            const days = ['月','火','水','木','金','土'];
-            const dates = [];
-            for(let i=0; i<6; i++) {
-                let d = new Date(monday); d.setDate(d.getDate() + i);
-                dates.push(d.toISOString().split("T")[0]);
-                
-                hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
-                shRow.innerHTML += `<th>氏名</th><th>部位</th>`;
-            }
-            document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString()} ～`;
+            hRow.innerHTML += `<th colspan="2">${days[i]} ${d.getMonth()+1}/${d.getDate()}</th>`;
+            shRow.innerHTML += `<th>氏名</th><th>部位</th>`;
+        }
+        
+        // タイトル表記を「月曜日 ～ 土曜日」に自動生成
+        let saturday = new Date(monday);
+        saturday.setDate(saturday.getDate() + 5);
+        document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString('ja-JP')} ～ ${saturday.toLocaleDateString('ja-JP')}`;
 
-            let weekData = {};
-            for(let i=0; i<6; i++) {
-                let res = await fetch(`/api/slots?date=${dates[i]}`);
-                weekData[i] = await res.json();
-            }
-
-            const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
-            let dailyCounts = [0, 0, 0, 0, 0, 0];
-
-            baseTimes.forEach(time => {
-                let row = `<tr><td class="time-col">${time}</td>`;
-                for(let i=0; i<6; i++) {
-                    const slot = weekData[i].find(s => s.time === time);
-                    let cellClass = '', nameContent = '', partContent = '';
-                    if (slot && (slot.patient_name || slot.part || slot.status === 'done')) {
-                        nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
-                        partContent = slot.part || '';
-                        dailyCounts[i]++;
-                        if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
-                    }
-                    row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
-                }
-                bRows.innerHTML += row + "</tr>";
-            });
-
-            let maxExtras = 0;
-            let extraSlotsByDay = {};
-            for(let i=0; i<6; i++) {
-                extraSlotsByDay[i] = weekData[i].filter(s => !baseTimes.includes(s.time) && (s.patient_name || s.part || s.status === 'done'));
-                if(extraSlotsByDay[i].length > maxExtras) maxExtras = extraSlotsByDay[i].length;
-            }
-
-            for(let j=0; j < maxExtras; j++) {
-                let row = `<tr><td class="time-col extra-row">追加枠</td>`;
-                for(let i=0; i<6; i++) {
-                    const slot = extraSlotsByDay[i][j];
-                    let cellClass = '', nameContent = '', partContent = '';
-                    if (slot) {
-                        nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
-                        partContent = slot.part || '';
-                        dailyCounts[i]++;
-                        if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
-                    }
-                    row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
-                }
-                bRows.innerHTML += row + "</tr>";
-            }
-
-            dailyCounts.forEach(count => { tRow.innerHTML += `<td colspan="2">${count} 件</td>`; });
+        let weekData = {};
+        for(let i=0; i<6; i++) {
+            let res = await fetch(`/api/slots?date=${dates[i]}`);
+            weekData[i] = await res.json();
         }
 
-        function shiftWeek(n) { monday.setDate(monday.getDate() + (n * 7)); load(); }
-        load();
-    </script>
-</body>
-</html>
+        const baseTimes = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
+        let dailyCounts = [0, 0, 0, 0, 0, 0];
+
+        baseTimes.forEach(time => {
+            let row = `<tr><td class="time-col">${time}</td>`;
+            for(let i=0; i<6; i++) {
+                const slot = weekData[i].find(s => s.time === time);
+                let cellClass = '', nameContent = '', partContent = '';
+                if (slot && (slot.patient_name || slot.part || slot.status === 'done')) {
+                    nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
+                    partContent = slot.part || '';
+                    dailyCounts[i]++;
+                    if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
+                }
+                row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
+            }
+            bRows.innerHTML += row + "</tr>";
+        });
+
+        let maxExtras = 0;
+        let extraSlotsByDay = {};
+        for(let i=0; i<6; i++) {
+            extraSlotsByDay[i] = weekData[i].filter(s => !baseTimes.includes(s.time) && (s.patient_name || s.part || s.status === 'done'));
+            if(extraSlotsByDay[i].length > maxExtras) maxExtras = extraSlotsByDay[i].length;
+        }
+
+        for(let j=0; j < maxExtras; j++) {
+            let row = `<tr><td class="time-col extra-row">追加枠</td>`;
+            for(let i=0; i<6; i++) {
+                const slot = extraSlotsByDay[i][j];
+                let cellClass = '', nameContent = '', partContent = '';
+                if (slot) {
+                    nameContent = slot.patient_name || (slot.status === 'done' ? '---' : '');
+                    partContent = slot.part || '';
+                    dailyCounts[i]++;
+                    if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
+                }
+                row += `<td class="name-cell ${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
+            }
+            bRows.innerHTML += row + "</tr>";
+        }
+
+        dailyCounts.forEach(count => { tRow.innerHTML += `<td colspan="2">${count} 件</td>`; });
+    }
+
+    function shiftWeek(n) { 
+        monday.setDate(monday.getDate() + (n * 7)); 
+        load(); 
+    }
+    load();
+</script>
