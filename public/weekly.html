@@ -31,7 +31,7 @@
         .modal-content { background:white; padding:20px; border-radius:8px; width:90%; max-width:400px; box-sizing: border-box; }
         .input-group { margin-bottom: 10px; }
         .input-group label { display: block; font-size: 0.8em; color: #666; margin-bottom: 2px; }
-        .input-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        .input-group input, .input-group select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
         .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 10px 0; }
         .btn-opt { padding: 10px 5px; border: 1px solid #ddd; background: #f8f9fa; text-align: center; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
         .btn-opt.active, .side-btn.active { background: #28a745; color: white; border-color: #28a745; }
@@ -92,7 +92,17 @@
             <div class="btn-opt side-btn" id="side-N" onclick="setSide('')">なし</div>
         </div>
         <div id="partsGrid" class="grid"></div>
+        
         <button onclick="save()" style="width:100%; padding:15px; background:#28a745; color:white; border:none; border-radius:4px; font-size:1.1em; font-weight:bold; cursor:pointer; margin-top:10px;">確定・更新</button>
+        
+        <div id="moveSection" style="margin-top: 15px; padding: 12px; border: 1px dashed #0288d1; background: #e1f5fe; border-radius: 6px; display: none;">
+            <p style="margin: 0 0 8px 0; font-size: 0.85em; font-weight: bold; color: #0288d1;">👉 移動先の日時を選択</p>
+            <div class="input-group"><label>移動日</label><input type="date" id="moveDate"></div>
+            <div class="input-group"><label>時間枠</label><select id="moveTime"></select></div>
+            <button onclick="moveReservationData()" style="width:100%; padding:10px; background:#0288d1; color:white; border:none; border-radius:4px; font-size:0.95em; font-weight:bold; cursor:pointer; margin-top:5px;">この日時に変更を実行</button>
+        </div>
+        <button id="btnMoveToggle" onclick="toggleMoveSection()" style="width:100%; padding:10px; background:#0288d1; color:white; border:none; border-radius:4px; font-size:0.9em; font-weight:bold; cursor:pointer; margin-top:10px;">📅 日時を変更して移動</button>
+        
         <button onclick="deleteReservation()" style="width:100%; padding:10px; background:#dc3545; color:white; border:none; border-radius:4px; font-size:0.9em; font-weight:bold; cursor:pointer; margin-top:10px;">予約を消去</button>
         <button onclick="closeModal()" style="width:100%; background:none; border:none; color:gray; margin-top:10px; cursor:pointer;">キャンセル</button>
     </div>
@@ -102,9 +112,16 @@
     let currentFocusDate = new Date(); 
     const times = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00"];
     const parts = ["頚椎","胸椎","腰椎","肩","肘","手","股関節","大腿","膝","下腿","足関節"];
-    let curId = null, curP = "", curSide = "";
+    let curId = null, curP = "", curSide = "", curDateStr = "", curTimeStr = "";
 
-    // 💡 日本時間のタイムゾーンに安全に準拠した YYYY-MM-DD 生成関数
+    // 移動先の時間プルダウンの選択肢を初期生成
+    const moveTimeSelect = document.getElementById("moveTime");
+    times.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t; opt.innerText = t;
+        moveTimeSelect.appendChild(opt);
+    });
+
     function formatDateStr(date) {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -141,9 +158,7 @@
 
     async function loadWeekTable() {
         const monday = new Date(currentFocusDate);
-        const currentDayNum = monday.getDay(); // 0:日, 1:月, 2:火...
-        
-        // 💡 【大修正】月曜日を基準点にするロジックを確実にズレない数式に変更
+        const currentDayNum = monday.getDay(); 
         const distanceToMonday = currentDayNum === 0 ? -6 : 1 - currentDayNum;
         monday.setDate(monday.getDate() + distanceToMonday);
 
@@ -162,7 +177,6 @@
             header.innerHTML += `<th>${d.getMonth()+1}/${d.getDate()}(${dayNames[i]})</th>`;
         }
 
-        // 💡 週の表示パネル（例: 6/1 ~ 6/6）を更新
         const firstDate = new Date(monday);
         const lastDate = new Date(monday);
         lastDate.setDate(lastDate.getDate() + 5);
@@ -176,7 +190,7 @@
                 if (slot) {
                     const isBooked = ["waiting", "scanning", "done"].includes(slot.status);
                     const name = slot.patient_name || "";
-                    row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${slot.patient_id || ''}', '${slot.part || ''}')">
+                    row += `<td class="slot ${isBooked ? 'booked' : ''}" onclick="openModal(${slot.id}, '${slot.time}', '${name}', '${slot.patient_id || ''}', '${slot.part || ''}', '${dateStr}')">
                                 ${isBooked ? `<span class="id-info">${slot.patient_id}</span><span class="patient-info">${name}</span><span class="part-info">${slot.part}</span>` : '<span class="empty">空き</span>'}
                             </td>`;
                 } else { row += `<td style="background:#f0f0f0;">-</td>`; }
@@ -200,7 +214,7 @@
             const name = slot.patient_name || "";
             const div = document.createElement("div");
             div.className = `mobile-slot ${isBooked ? 'booked' : ''}`;
-            div.onclick = () => openModal(slot.id, slot.time, name, slot.patient_id || '', slot.part || '');
+            div.onclick = () => openModal(slot.id, slot.time, name, slot.patient_id || '', slot.part || '', dateStr);
             div.innerHTML = `
                 <div class="mobile-time">${t}</div>
                 <div class="mobile-content">
@@ -219,13 +233,25 @@
         else document.getElementById('side-N').classList.add('active');
     }
 
-    function openModal(id, time, name, pid, part) {
-        curId = id; curP = ""; curSide = "";
+    function openModal(id, time, name, pid, part, dateStr) {
+        curId = id; curP = ""; curSide = ""; curDateStr = dateStr; curTimeStr = time;
         document.getElementById('mTitle').innerText = time + " 予約登録";
         document.getElementById('pId').value = pid;
         document.getElementById('pName').value = name;
         document.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
         setSide('');
+        
+        // 移動セクションをリセットして隠す
+        document.getElementById('moveSection').style.display = 'none';
+        document.getElementById('moveDate').value = dateStr;
+        document.getElementById('moveTime').value = time;
+
+        // 予約データがある場合のみ「日時変更」ボタンを表示
+        if(name || pid) {
+            document.getElementById('btnMoveToggle').style.display = 'block';
+        } else {
+            document.getElementById('btnMoveToggle').style.display = 'none';
+        }
         
         if(part) {
             if(part.startsWith('左')) { setSide('左'); curP = part.replace('左',''); }
@@ -255,6 +281,58 @@
     }
 
     function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+    function toggleMoveSection() {
+        const sec = document.getElementById('moveSection');
+        sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // 📅 既存の情報を保持して、別の指定日時に引っ越す処理
+    async function moveReservationData() {
+        const targetDate = document.getElementById('moveDate').value;
+        const targetTime = document.getElementById('moveTime').value;
+        const name = document.getElementById('pName').value;
+        const pid = document.getElementById('pId').value;
+
+        if (!targetDate || !targetTime) return alert("移動先の日付と時間を選択してください");
+        if (targetDate === curDateStr && targetTime === curTimeStr) return alert("現在と同じ日時が選択されています");
+
+        // 1. 移動先の枠が空いているかバックエンドに確認
+        const checkRes = await fetch(`/api/slots?date=${targetDate}`);
+        if (!checkRes.ok) return alert("移動先の状況確認に失敗しました");
+        
+        const targetDaySlots = await checkRes.json();
+        const destSlot = targetDaySlots.find(s => s.time === targetTime);
+
+        if (!destSlot) {
+            return alert("指定された移動先の枠が見つかりません。対応外の時間帯の可能性があります。");
+        }
+        if (["waiting", "scanning", "done"].includes(destSlot.status)) {
+            return alert(`移動不可：選択された日時（${targetDate} ${targetTime}）には既に別の予約が入っています。`);
+        }
+
+        if (!confirm(`現在の予約情報を ${targetDate} ${targetTime} へ移動しますか？\n（移動後、現在の枠は空きに戻ります）`)) return;
+
+        // 2. 移動先（新しいスロット）へデータを書き込み
+        const reserveRes = await fetch("/api/reserve", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ id: destSlot.id, patient_name: name, patient_id: pid, part: curSide + curP })
+        });
+
+        if (reserveRes.ok) {
+            // 3. 移動が成功したら、元のスロットを消去（初期化）する
+            await fetch("/api/delete", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({ id: curId })
+            });
+            closeModal();
+            refresh();
+        } else {
+            alert("移動処理に失敗しました。");
+        }
+    }
 
     async function save() {
         const name = document.getElementById('pName').value;
@@ -293,7 +371,6 @@
     const otherBtn = document.createElement("div");
     otherBtn.className = "btn-opt";
     otherBtn.id = "btn-other-part";
-    otherBtn.innerText = "other (手入力)";
     otherBtn.innerText = "その他 (手入力)";
     otherBtn.style.background = "#eceff1";
     otherBtn.style.fontWeight = "bold";
