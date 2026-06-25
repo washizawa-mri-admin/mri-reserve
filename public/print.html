@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MRI 1週間予約表（A4横・2枚構成）</title>
+    <title>MRI 1週間予約表（A4横・ジャストサイズ）</title>
     <style>
         @page { size: A4 landscape; margin: 5mm; }
         body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
@@ -12,25 +12,25 @@
         .btn:hover { background: #eee; }
         .btn-back { background: #666; color: white; border: none; }
 
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; margin-bottom: 10px; }
-        th { border: 1px solid #000; background: #eee; height: 28px; font-size: 10px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; margin-bottom: 5px; }
+        th { border: 1px solid #000; background: #eee; height: 26px; font-size: 10px; }
         .time-col { font-weight: bold; background: #fafafa; }
         
-        /* 💡 縦の余白を活かすため、1行の高さを 32px → 45px に広げました */
-        td { border: 1px solid #000; padding: 0; text-align: center; height: 45px; vertical-align: middle; }
+        /* 💡 A4横1枚にぴったり収まる限界の高さ（36px）に調整しました */
+        td { border: 1px solid #000; padding: 0; text-align: center; height: 36px; vertical-align: middle; }
         
-        /* 💡 セル内でIDと名前が上下に綺麗に収まるよう調整（はみ出し防止） */
-        .name-cell { font-weight: bold; overflow: hidden; white-space: nowrap; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; box-sizing: border-box; padding: 2px 0; }
-        .patient-id-sub { font-size: 11px; font-weight: normal; color: #333; line-height: 1.2; }
-        .patient-name-main { font-size: 16px; font-weight: bold; line-height: 1.3; }
+        /* 💡 36pxの中でIDと名前が上下に綺麗に収まり、はみ出さないための配置設定 */
+        .name-cell { font-weight: bold; overflow: hidden; white-space: nowrap; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; box-sizing: border-box; padding: 1px 0; }
+        .patient-id-sub { font-size: 10px; font-weight: normal; color: #444; line-height: 1.1; margin-bottom: 1px; }
+        .patient-name-main { font-size: 15px; font-weight: bold; line-height: 1.2; }
         
         .part-cell { font-size: 10.5px; color: #000; font-weight: bold; overflow: hidden; white-space: nowrap; }
         
         .done-past { background-color: #ffcccc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .total-row { background-color: #f8f9fa; font-weight: bold; height: 28px; }
+        .total-row { background-color: #f8f9fa; font-weight: bold; height: 26px; }
         .total-label { text-align: right; padding-right: 5px; }
 
-        .extra-title { font-size: 14px; font-weight: bold; margin: 10px 0 5px 0; color: #d63384; }
+        .extra-title { font-size: 13px; font-weight: bold; margin: 5px 0; color: #d63384; }
         .extra-row { color: #d63384; }
 
         /* 📄 印刷時に1ページ目と2ページ目をきれいに分けるための設定 */
@@ -52,7 +52,7 @@
     </div>
 
     <div id="page1Container">
-        <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px;">MRI検査予約表（通常枠）</div>
+        <div style="font-size: 13px; font-weight: bold; margin-bottom: 4px;">MRI検査予約表（通常枠）</div>
         <table>
             <colgroup>
                 <col style="width: 50px;"> 
@@ -110,7 +110,7 @@
         let date = new Date(d); 
         date.setHours(0, 0, 0, 0); 
         
-        let dayNum = date.getDay(); // 0:日, 1:月, 2:火...
+        let dayNum = date.getDay(); 
         let distanceToMonday = dayNum === 0 ? -6 : 1 - dayNum;
         date.setDate(date.getDate() + distanceToMonday);
         return date;
@@ -123,7 +123,6 @@
         const extraBRows = document.getElementById("extraBodyRows");
         const tRow = document.getElementById("totalRow");
         
-        // ヘッダー要素の初期化（両方のテーブルを一度にセット）
         document.querySelectorAll(".headerRow").forEach(el => el.innerHTML = '<th class="time-col" rowspan="2">時間</th>');
         document.querySelectorAll(".subHeaderRow").forEach(el => el.innerHTML = '');
         bRows.innerHTML = "";
@@ -147,7 +146,6 @@
             });
         }
         
-        // タイトル表記を「月曜日 ～ 土曜日」に自動生成
         let saturday = new Date(monday);
         saturday.setDate(saturday.getDate() + 5);
         document.getElementById("weekTitle").innerText = `${monday.toLocaleDateString('ja-JP')} ～ ${saturday.toLocaleDateString('ja-JP')}`;
