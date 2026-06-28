@@ -118,7 +118,6 @@
 </div>
 
 <script>
-// 💡 管理画面の配列と完全に一致させました（「非常勤」に変更）
 const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
 document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
 let chart1 = null, chart2 = null;
@@ -134,10 +133,9 @@ async function updateCharts() {
         document.getElementById("barChartTitle").innerText = `担当医別実績 (${displayMonth})`;
         document.getElementById("tableTitle").innerText = `医師別詳細集計 (${displayMonth})`;
 
-        // 💡 生データ(status='done')、または従来の集計済みデータのどちらでも対応できる安全フィルター
+        // 生データ(status='done')、または従来の集計済みデータのどちらでも対応できる安全フィルター
         const monthly = raw.filter(r => {
             if (!r.date) return false;
-            // 生データの場合はstatus='done'のみカウント、集計済みデータならそのまま通す
             if (r.hasOwnProperty('status') && r.status !== 'done') return false;
             return r.date.startsWith(selMonth);
         });
@@ -147,13 +145,17 @@ async function updateCharts() {
 
         monthly.forEach(r => {
             let docIndex = doctors.indexOf(r.doctor);
-            // 💡 マッチしない場合、または「その他・非常勤」などの古い表記はすべて「非常勤」の枠に叩き込む
             if (docIndex === -1) {
                 docIndex = doctors.indexOf("非常勤");
             }
             
-            // 1レコードあたりの件数（生データなら1件、集計済みならr.count）
-            const amt = r.hasOwnProperty('count') ? (r.count || 0) : 1;
+            // 💡 修正点：is_extraプロパティに件数がある場合はそれを数値化、なければcount、それもなければ1とする
+            let amt = 1;
+            if (r.hasOwnProperty('is_extra')) {
+                amt = Number(r.is_extra) || 0;
+            } else if (r.hasOwnProperty('count')) {
+                amt = Number(r.count) || 0;
+            }
             
             if (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") {
                 barDataRemote[docIndex] += amt;
@@ -175,10 +177,16 @@ async function updateCharts() {
         const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
         document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
 
-        // 💡 年間・累計の集計関数（生データ・集計データ両対応）
+        // 💡 修正点：年間・累計の集計用関数でも is_extra を正しく判定して加算する
         const calcTotal = (dataset) => dataset.reduce((sum, r) => {
             if (r.hasOwnProperty('status') && r.status !== 'done') return sum;
-            return sum + (r.hasOwnProperty('count') ? (r.count || 0) : 1);
+            let amt = 1;
+            if (r.hasOwnProperty('is_extra')) {
+                amt = Number(r.is_extra) || 0;
+            } else if (r.hasOwnProperty('count')) {
+                amt = Number(r.count) || 0;
+            }
+            return sum + amt;
         }, 0);
 
         const yearlyData = raw.filter(r => r.date && r.date.startsWith(year));
