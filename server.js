@@ -3,7 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const basicAuth = require("express-basic-auth");
 const app = express();
 
-// 環境変数（Renderの管理画面で設定したURLとSecret Keyがここに入ります）
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -12,32 +11,27 @@ app.use(express.json());
 app.use(express.static("public"));
 
 // ==========================================
-// 🛡️ 門番：IPチェック処理（修正版）
+// 🛡️ 門番：IPチェック処理
 // ==========================================
 app.use(async (req, res, next) => {
     if (req.path === '/api/update-ip') return next();
 
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
 
-    // ローカル環境（開発中）は常に許可
     if (clientIp.includes('::1') || clientIp.includes('127.0.0.1')) return next();
 
-    // 【重要】エラーが起きてもサーバーを落とさないように、try-catchで囲む
     let allowedIp = null;
     try {
         const { data } = await supabase.from('settings').select('value').eq('key', 'allowed_ip').single();
         allowedIp = data?.value;
     } catch (err) {
-        // IPが変わってSupabaseに拒否された場合は、ここを通過して下の「エラー画面」に進む
         console.log("Supabase通信エラー（IP変更の可能性あり）");
     }
 
-    // 判定：IPが一致していれば通常通りカレンダーを表示
     if (allowedIp && allowedIp.trim() !== "" && clientIp.includes(allowedIp)) {
         return next();
     }
 
-    // ❌ IPが違う、またはエラーでデータが取れない場合は【確実に】この赤いエラー画面を返す！
     return res.status(403).send(`
         <div style="text-align:center; padding-top:50px; font-family:sans-serif; max-width: 600px; margin: 0 auto; line-height: 1.6;">
             <h1 style="color: #dc3545;">院内ネットワーク外からのアクセスです</h1>
@@ -67,7 +61,6 @@ app.use(async (req, res, next) => {
             if (!confirm('現在のネットワークを新しい院内Wi-Fiとして登録しますか？')) return;
 
             try {
-                // サーバー側のAPIを叩く
                 const res = await fetch('/api/update-ip', { method: 'POST' });
                 const data = await res.json();
                 if (data.success) {
@@ -85,7 +78,7 @@ app.use(async (req, res, next) => {
 });
 
 // ==========================================
-// 🚀 IP更新用API（ボタンを押した時にここが動きます）
+// 🚀 IP更新用API
 // ==========================================
 app.post('/api/update-ip', async (req, res) => {
     const newIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
@@ -95,18 +88,17 @@ app.post('/api/update-ip', async (req, res) => {
 });
 
 // ==========================================
-// 🔐 認証：Basic認証（IP制限を突破した人のみパスワードを聞く）
+// 🔐 認証：Basic認証
 // ==========================================
 app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
 
-
 // ==========================================
-// 📅 以下、小野さんの元のカレンダー・予約ロジック（無改造）
+// 📅 カレンダー・予約システムコアロジック（最適化版）
 // ==========================================
 
 // スロットの自動生成
 async function ensureSlotsExist(date) {
-  const { data: existing } = await supabase.from('slots').select('id').eq('date', date).limit(1);
+  const { data: existing } = await supabase.from('slots').select('id').eq('date', date).neq('time', '00:00').limit(1);
   if (existing && existing.length > 0) return;
 
   const d = new Date(date);
@@ -119,18 +111,19 @@ async function ensureSlotsExist(date) {
   await supabase.from('slots').insert(inserts);
 }
 
-// 予約枠取得
+// 予約枠取得（カレンダー描画時のノイズとなる移行用00:00枠を綺麗に排除）
 app.get("/api/slots", async (req, res) => {
   const date = req.query.date;
   await ensureSlotsExist(date);
-  const { data } = await supabase.from('slots').select('*').eq('date', date).order('time', { ascending: true });
+  // カレンダー画面のfindロジックが狂わないよう、time='00:00'のデータはここで除外してフロントに渡す
+  const { data } = await supabase.from('slots').select('*').eq('date', date).neq('time', '00:00').order('time', { ascending: true });
   res.json(data || []);
 });
 
 // 枠の追加
 app.post("/api/add", async (req, res) => {
   const { date } = req.body;
-  const { data: latest } = await supabase.from('slots').select('time').eq('date', date).order('time', { ascending: false }).limit(1);
+  const { data: latest } = await supabase.from('slots').select('time').eq('date', date).neq('time', '00:00').order('time', { ascending: false }).limit(1);
   let [h, m] = (latest && latest.length > 0 ? latest[0].time : "18:00").split(":").map(Number);
   m += 15; if(m >= 60){ h++; m -= 60; }
   const newTime = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
@@ -138,73 +131,47 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ==========================================
-// 🔄 【最強防衛版】すでに終了した枠を勝手に戻さないデータ更新窓口
-// ==========================================
+// 予約データ更新窓口（鉄壁ステータスガード）
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
-    
-    if (!id) {
-        return res.json({ status: "ignored" });
-    }
+    if (!id) return res.json({ status: "ignored" });
 
     try {
-        // 🛡️ 防衛策：現在のデータベースにある最新のステータスを1回チェックする
-        const { data: currentSlot, error: fetchError } = await supabase
-            .from('slots')
-            .select('status')
-            .eq('id', id)
-            .single();
-
+        const { data: currentSlot, error: fetchError } = await supabase.from('slots').select('status').eq('id', id).single();
         if (fetchError) throw fetchError;
 
-        // 💡 届いたデータ（存在する項目）だけを動的に組み立てる
         let updateData = {};
-        
         if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
         if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
         if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
         if (part !== undefined && part !== null) updateData.part = part;
         if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
         
-        // 🔒 ステータス上書きの鉄壁ガード
-        // すでにデータベース上が「終了 (done)」になっている場合は、
-        // 届いたステータスが何であれ、強制的に 'done' のまま固定（上書きを拒否）する！
         if (currentSlot && currentSlot.status === 'done') {
             updateData.status = 'done';
         } else {
-            // まだ終了していない枠であれば、送られてきたステータスをそのまま適用
             if (status !== undefined && status !== null) updateData.status = status;
         }
         
-        // もし更新する中身が空っぽなら何もしない
-        if (Object.keys(updateData).length === 0) {
-            return res.json({ status: "ignored" });
-        }
+        if (Object.keys(updateData).length === 0) return res.json({ status: "ignored" });
         
         const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
         if (updateError) throw updateError;
         
         res.json({ status: "ok" });
-
     } catch (err) {
         console.error("データ更新エラー:", err);
         return res.status(500).json({ error: "更新に失敗しました" });
     }
 });
-// 読影
+
+// 読影ステータス変更
 app.post("/api/remote", async (req, res) => {
-    // 💡 画面側から送られてくる doctor もしっかり受け取る
     const { id, patient_name, patient_id, doctor } = req.body;
-    
     let updateData = { is_remote: 1 };
     if (patient_name !== undefined) updateData.patient_name = patient_name || null;
     if (patient_id !== undefined) updateData.patient_id = patient_id || null;
-    
-    // 💡 読影状態にするときに、ドクターが選ばれていればそれも一緒にSupabaseに保存！
-    if (doctor !== undefined && doctor !== null && doctor !== "") {
-        updateData.doctor = doctor;
-    }
+    if (doctor !== undefined && doctor !== null && doctor !== "") updateData.doctor = doctor;
     
     const { error } = await supabase.from('slots').update(updateData).eq('id', id);
     if (error) return res.status(500).json(error);
@@ -233,79 +200,57 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ★追加した集計API: ドクター別の撮影一覧（過去固定データ＋直近リアルタイム＋時間外の完全合体版）
+// ドクター別撮影一覧API（塊データ対応の完全防衛版）
 app.get("/api/report/doctors", async (req, res) => {
   try {
-    // 1. 過去の確定データ（4月1日より前）を別テーブルから取得
-    const { data: summaryData, error: summaryError } = await supabase
-      .from('monthly_summary')
-      .select('year_month, doctor, total_count');
-
+    const { data: summaryData, error: summaryError } = await supabase.from('monthly_summary').select('year_month, doctor, total_count');
     if (summaryError) throw summaryError;
 
-    // 2. 直近（2026年4月1日以降）のリアルタイムデータを取得
     const { data: realTimeData, error: realTimeError } = await supabase
       .from('slots')
       .select('date, doctor, status, is_extra')
       .eq('status', 'done')
       .not('doctor', 'is', null)
       .neq('doctor', '')
-      .gte('date', '2026-04-01')
       .range(0, 99999);
 
     if (realTimeError) throw realTimeError;
 
-    // 📦 2つのデータを綺麗に集計してまとめる箱
     const stats = {};
 
-    // ① 過去の確定データを箱に詰める
     if (summaryData) {
       summaryData.forEach(r => {
-        // 画面側が日付（YYYY-MM-DD）で探せるように、年月（例: 2026-03）に「-01」を補正して1日扱いで入れる
         const key = `${r.year_month}-01_${r.doctor}`;
         if (!stats[key]) stats[key] = { date: `${r.year_month}-01`, doctor: r.doctor, count: 0 };
         stats[key].count += Number(r.total_count);
       });
     }
 
-    // ② 直近のリアルタイムデータを時間外も計算して箱に足し算する
     if (realTimeData) {
       realTimeData.forEach(r => {
         const key = `${r.date}_${r.doctor}`;
         if (!stats[key]) stats[key] = { date: r.date, doctor: r.doctor, count: 0 };
-
-        let rowCount = 1;
-        if (r.is_extra && Number(r.is_extra) > 1) {
-          rowCount = Number(r.is_extra);
-        }
-
+        // 💡 塊データ（is_extra）の数値を安全に評価して加算
+        const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
         stats[key].count += rowCount;
       });
     }
 
     res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
-
   } catch (err) {
-    console.error("ドクター別集計API（完全版）エラー:", err);
+    console.error("ドクター別集計APIエラー:", err);
     return res.status(500).json({ error: "集計データの取得に失敗しました" });
   }
 });
 
-// ==========================================
-// 📊 【完全版】過去データ固定化 ＝ 加算式超軽量レポートAPI
-// ==========================================
+// 加算式超軽量レポートAPI
 app.get("/api/report/all", async (req, res) => {
     try {
         const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
         const currentYear = parseInt(selMonth.split('-')[0]);
-
-        // 💡 グラフ用に直近3年間（今年・去年・一昨年）の範囲を決める
         const startYear = currentYear - 2;
-        const startDate = `${startYear}-01-01`;
         const endDate = `${currentYear}-12-31`;
 
-        // ⚡️ 【加算式ロジック①】：2ヶ月前より古い「確定データ」を新テーブルから一瞬で取得
-        // （2026年4月1日より前の古いデータはすべてここから数字だけを引くので超軽い！）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
@@ -314,25 +259,20 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryError) throw summaryError;
 
-        // ⚡️ 【加算式ロジック②】：直近2ヶ月（2026年4月1日以降）のデータだけをリアルタイムに集計
-        // （全件探さないのでSupabaseの1000件制限にも絶対に引っかからない！）
         const { data: realTimeData, error: realTimeError } = await supabase
             .from('slots')
             .select('date, doctor, is_remote, is_extra')
             .eq('status', 'done')
-            .gte('date', '2026-04-01') // 💡 ここで直近以降だけに絞り込む
+            .gte('date', '2026-04-01')
             .lte('date', endDate)
             .range(0, 99999);
 
         if (realTimeError) throw realTimeError;
 
-        // 📦 ２つのデータを１つの綺麗な形にガッチャンコ（加算）する
         const formattedData = [];
 
-        // ① 過去の確定データを詰める
         if (summaryData) {
             summaryData.forEach(r => {
-                // グラフが読み込めるように、年月の文字列（例: 2025-08）に「-01」を補正して日付にする
                 formattedData.push({
                     date: `${r.year_month}-01`,
                     doctor: r.doctor,
@@ -342,13 +282,9 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // ② 直近のリアルタイムデータを集計して詰める
         if (realTimeData) {
             realTimeData.forEach(r => {
-                let rowCount = 1;
-                if (r.is_extra && Number(r.is_extra) > 1) {
-                    rowCount = Number(r.is_extra);
-                }
+                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
                 formattedData.push({
                     date: r.date,
                     doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
@@ -358,9 +294,7 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 画面（グラフ）に完成したデータを返す
         res.json(formattedData);
-
     } catch (err) {
         console.error("新レポートAPIエラー:", err);
         res.status(500).json({ error: "データ取得に失敗しました" });
