@@ -38,8 +38,7 @@
     <div class="no-print">
         <a href="index.html" class="nav-btn">⬅ 戻る</a>
         <div class="month-selector">
-            表示月: <input type="month" id="monthPicker" onchange="renderStats()">
-            <button onclick="window.print()" style="margin-left:10px; cursor:pointer;">🖨️ A4印刷</button>
+            表示月: <input type="month" id="monthPicker" onchange="loadData()">
         </div>
     </div>
 
@@ -54,7 +53,8 @@
 </div>
 
 <script>
-    const doctorOrder = ["鷲澤", "永野", "鷲澤匠","河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
+    // 元の並び順とドクターリストを完全維持
+    const doctorOrder = ["鷲澤", "永野", "鷲澤匠", "河本", "石橋", "木内", "白石", "小谷野", "鈴木", "非常勤"];
     let allData = [];
 
     window.onload = async function() {
@@ -66,20 +66,22 @@
         await loadData();
     };
 
+    // 表示月が切り替わるたびに、その月の正確なデータを取得し直す安全設計
     async function loadData() {
+        const selectedMonth = document.getElementById('monthPicker').value;
+        if (!selectedMonth) return;
+
         try {
-            const res = await fetch(`/api/report/doctors?_ts=${Date.now()}`);
+            // 💡 データのドロップが起きない、信頼性の高い一括レポートAPIへ接続先を変更
+            const res = await fetch(`/api/report/all?month=${selectedMonth}&_ts=${Date.now()}`);
             allData = await res.json();
-            renderStats();
+            renderStats(selectedMonth);
         } catch (e) { 
             console.error("データ読み込み失敗:", e); 
         }
     }
 
-    function renderStats() {
-        const selectedMonth = document.getElementById('monthPicker').value;
-        if (!selectedMonth) return;
-        
+    function renderStats(selectedMonth) {
         const [targetYear, targetMonth] = selectedMonth.split('-').map(Number);
         document.getElementById('title-text').innerText = `${targetYear}年${targetMonth}月 MRI撮影件数 集計表`;
         
@@ -91,15 +93,14 @@
 
         const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
         
-        // 💡 【改善の核心】日付ごと・ドクターごとの集計格納庫（2次元マップ）をあらかじめ作成
-        // 例: dailyMap[日][ドクター名] = 件数
+        // 日付ごと・ドクターごとの集計マップを初期化
         const dailyMap = {};
         for (let i = 1; i <= daysInMonth; i++) {
             dailyMap[i] = {};
             doctorOrder.forEach(dr => dailyMap[i][dr] = 0);
         }
 
-        // 💡 取得データをあらかじめ格納庫にすべて「安全に足し算」しておく
+        // 💡 取得した生データをフロント側で1行ずつ確実に加算処理（上書きを完全防止）
         allData.forEach(d => {
             if (!d.date || !d.doctor) return;
             const parts = d.date.split('-');
@@ -109,17 +110,16 @@
             const m = Number(parts[1]);
             const dayNum = Number(parts[2]);
 
-            // 選択された年月と一致する場合のみ格納
+            // 選択された月の日付のみをマッピング
             if (y === targetYear && m === targetMonth && dayNum >= 1 && dayNum <= daysInMonth) {
-                // ドクター名がリストにあるか確認（なければ「非常勤」扱いなど、既存仕様に合わせる場合は調整）
-                let drName = d.doctor;
+                let drName = d.doctor.trim();
+                
+                // マスターリストに存在しない名前、または空文字の場合は「非常勤」枠へ
                 if (!doctorOrder.includes(drName)) {
-                    // もしリストにないドクター名なら、既存に合わせて「非常勤」に集約（必要に応じて）
-                    if (doctorOrder.includes("非常勤")) drName = "非常勤";
-                    else return;
+                    drName = "非常勤";
                 }
                 
-                // server.js側で集計された数値（count）をそのまま足し算する
+                // 1行＝1件、もしくは移行データの塊数値（count）をそのまま安全に加算
                 const countAmt = Number(d.count) || 1;
                 dailyMap[dayNum][drName] += countAmt;
             }
@@ -135,7 +135,7 @@
         const tMonth = t.getMonth() + 1;
         const tDay = t.getDate();
 
-        // 描画ループ
+        // 1日〜月末までのメイン描画ループ
         for (let i = 1; i <= daysInMonth; i++) {
             const isToday = (targetYear === tYear && targetMonth === tMonth && i === tDay);
             
@@ -143,7 +143,6 @@
             let rowHtml = `<tr class="${isToday ? 'today-row' : ''}"><td class="date-col">${i}日</td>`;
 
             doctorOrder.forEach(dr => {
-                // 💡 あらかじめ集計済みの格納庫から件数を引くだけなので、ズレも重複も起きない
                 const count = dailyMap[i][dr];
                 
                 rowHtml += `<td class="${count === 0 ? 'zero' : 'count-cell'}">${count === 0 ? '-' : count}</td>`;
@@ -156,7 +155,7 @@
             grandTotal += dayTotal;
         }
 
-        // 合計行
+        // 最下部の合計行の組み立て
         let totalRowHtml = `<tr class="total-row"><td class="date-col">合計</td>`;
         doctorOrder.forEach(dr => {
             totalRowHtml += `<td>${drMonthlyTotals[dr]}</td>`;
