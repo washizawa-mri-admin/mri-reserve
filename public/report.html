@@ -1,282 +1,247 @@
-const express = require("express");
-const { createClient } = require('@supabase/supabase-js');
-const basicAuth = require("express-basic-auth");
-const app = express();
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MRI統計レポート - 印刷最適化版</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        
+        /* 印刷時に「戻る」ボタンやフィルターを隠す */
+        @media print {
+            .nav, .filter-section { display: none; }
+            body { background: white; padding: 0; }
+            .container { box-shadow: none; border: none; width: 100%; max-width: none; }
+            .chart-box { break-inside: avoid; } /* グラフの途中でページを切らない */
+        }
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        .nav { margin-bottom: 20px; }
+        .nav a { text-decoration: none; color: #2196f3; font-weight: bold; }
+        
+        .filter-section { background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
+        
+        /* グラフエリア */
+        .charts-row { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 30px; 
+            margin-bottom: 60px; /* グラフ下の余白を広げてテーブルと離す */
+        }
+        .chart-box { 
+            flex: 1; 
+            min-width: 500px; 
+            height: 400px; 
+            background: #fff; 
+            border: 1px solid #eee; 
+            padding: 20px; 
+            border-radius: 10px;
+            position: relative; 
+            box-sizing: border-box;
+        }
+        
+        /* 詳細集計セクション */
+        .table-section {
+            margin-top: 50px; /* グラフとの距離をさらに確保 */
+            border-top: 2px solid #eee;
+            padding-top: 30px;
+            page-break-before: auto; /* 状況に応じて改ページを許可 */
+        }
 
-app.use(express.json());
-app.use(express.static("public"));
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { border: 1px solid #e0e0e0; padding: 12px; text-align: center; }
+        th { background: #f8f9fa; color: #666; font-size: 0.9em; }
+        tr:nth-child(even) { background-color: #fafafa; }
+        .highlight { font-weight: bold; color: #e91e63; }
 
-// ==========================================
-// 🛡️ 門番：IPチェック処理
-// ==========================================
-app.use(async (req, res, next) => {
-    if (req.path === '/api/update-ip') return next();
+        .kpi-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 40px; page-break-inside: avoid; }
+        .kpi-card { padding: 20px; border-radius: 10px; color: white; text-align: center; }
+        .kpi-yearly { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+        .kpi-total { background: linear-gradient(135deg, #43a047, #2e7d32); }
+        .kpi-value { display: block; font-size: 2.5em; font-weight: bold; margin: 5px 0; }
+        .kpi-label { font-size: 0.9em; opacity: 0.9; }
 
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+        @media (max-width: 600px) { .chart-box { min-width: 100%; } .kpi-container { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="nav"><a href="index.html">← 予約管理画面へ戻る</a></div>
+    <h1>MRI稼働統計レポート</h1>
 
-    if (clientIp.includes('::1') || clientIp.includes('127.0.0.1')) return next();
+    <div class="filter-section">
+        基準年月の選択: <input type="month" id="monthInput" style="padding:8px; border:1px solid #ddd; border-radius:4px;">
+        <button onclick="updateCharts()" style="padding:8px 20px; background:#607d8b; color:white; border:none; border-radius:4px; cursor:pointer;">統計を更新</button>
+        <button onclick="window.print()" style="padding:8px 20px; background:#4caf50; color:white; border:none; border-radius:4px; cursor:pointer;">PDF/印刷</button>
+    </div>
 
-    let allowedIp = null;
-    try {
-        const { data } = await supabase.from('settings').select('value').eq('key', 'allowed_ip').single();
-        allowedIp = data?.value;
-    } catch (err) {
-        console.log("Supabase通信エラー（IP変更の可能性あり）");
-    }
+    <div class="charts-row">
+        <div class="chart-box">
+            <h3 style="margin-top:0;" id="barChartTitle">担当医別実績</h3>
+            <div style="height: calc(100% - 40px);"><canvas id="barChart"></canvas></div>
+        </div>
+        <div class="chart-box">
+            <h3 style="margin-top:0;">過去3年間の撮影推移</h3>
+            <div style="height: calc(100% - 40px);"><canvas id="lineChart"></canvas></div>
+        </div>
+    </div>
 
-    if (allowedIp && allowedIp.trim() !== "" && clientIp.includes(allowedIp)) {
-        return next();
-    }
+    <div class="table-section">
+        <h3 id="tableTitle">医師別詳細集計</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>担当医</th>
+                    <th>通常撮影</th>
+                    <th>読影提出</th>
+                    <th>合計件数</th>
+                    <th>読影率</th>
+                </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+            <tfoot id="summaryFoot" style="font-weight:bold; background:#eee;"></tfoot>
+        </table>
+    </div>
 
-    return res.status(403).send(`
-        <div style="text-align:center; padding-top:50px; font-family:sans-serif; max-width: 600px; margin: 0 auto; line-height: 1.6;">
-            <h1 style="color: #dc3545;">院内ネットワーク外からのアクセスです</h1>
-            <p>このシステムはセキュリティのため、登録された院内Wi-Fiからのみ閲覧可能です。</p>
-            <p>現在のあなたのIP: <b style="color:#dc3545; background:#fff5f5; padding:2px 6px; border-radius:4px;">${clientIp}</b></p>
-            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
-            
-            <div style="margin-top: 30px; padding: 20px; border: 1px dashed #ccc; background: #f9f9f9; border-radius: 8px;">
-                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
-                    <b>【管理者用】病院のルーター再起動などでIPが変わってしまった場合</b><br>
-                    以下に管理用パスワードを入力してボタンを押すと、このPCのネットワークが新しい許可IPとして登録されます。
-                </p>
-                <input type="password" id="admin-ip-pass" placeholder="パスワードを入力" style="padding: 8px; width: 200px; border: 1px solid #ccc; border-radius: 4px; margin-right: 5px;">
-                <button id="update-ip-btn" style="padding: 8px 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold;">
-                    このネットを許可する
-                </button>
-            </div>
-        </div>
+    <div class="kpi-container">
+        <div class="kpi-card kpi-yearly">
+            <span class="kpi-label" id="yearlyLabel">年間合計</span>
+            <span class="kpi-value" id="yearlyTotal">0</span>
+            <span class="kpi-label">件</span>
+        </div>
+        <div class="kpi-card kpi-total">
+            <span class="kpi-label">導入以来 累計撮影数</span>
+            <span class="kpi-value" id="grandTotal">0</span>
+            <span class="kpi-label">件</span>
+        </div>
+    </div>
+</div>
 
-        <script>
-        document.getElementById('update-ip-btn').addEventListener('click', async () => {
-            const password = document.getElementById('admin-ip-pass').value;
-            if (password !== 'mri1234') {
-                alert('パスワードが違います。');
-                return;
-            }
-            if (!confirm('現在のネットワークを新しい院内Wi-Fiとして登録しますか？')) return;
+<script>
+const doctors = ["鷲澤","永野","鷲澤匠","河本","石橋","木内","白石","小谷野","鈴木","非常勤"];
+document.getElementById("monthInput").value = new Date().toISOString().substring(0, 7);
+let chart1 = null, chart2 = null;
 
-            try {
-                const res = await fetch('/api/update-ip', { method: 'POST' });
-                const data = await res.json();
-                if (data.success) {
-                    alert('更新が完了しました！システムを再起動します。数秒後にページをリロードしてください。');
-                    location.reload();
-                } else {
-                    alert('更新に失敗しました。');
-                }
-            } catch (err) {
-                alert('通信エラーが発生しました。Renderの環境変数やSupabaseのキーを再確認してください。');
-            }
-        });
-        <\/script>
-    `);
-});
+async function updateCharts() {
+    try {
+        const res = await fetch('/api/report/all');
+        const raw = await res.json();
+        const selMonth = document.getElementById("monthInput").value;
+        const [year, month] = selMonth.split('-');
+        const displayMonth = `${year}年${month}月`;
 
-// ==========================================
-// 🚀 IP更新用API
-// ==========================================
-app.post('/api/update-ip', async (req, res) => {
-    const newIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
-    const { error } = await supabase.from('settings').upsert({ key: 'allowed_ip', value: newIp });
-    if (error) return res.status(500).json(error);
-    res.json({ success: true, updatedIp: newIp });
-});
+        document.getElementById("barChartTitle").innerText = `担当医別実績 (${displayMonth})`;
+        document.getElementById("tableTitle").innerText = `医師別詳細集計 (${displayMonth})`;
 
-// ==========================================
-// 🔐 認証：Basic認証
-// ==========================================
-app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
+        // 生データ(status='done')、または従来の集計済みデータのどちらでも対応できる安全フィルター
+        const monthly = raw.filter(r => {
+            if (!r.date) return false;
+            if (r.hasOwnProperty('status') && r.status !== 'done') return false;
+            return r.date.startsWith(selMonth);
+        });
+        
+        const barDataNormal = new Array(doctors.length).fill(0);
+        const barDataRemote = new Array(doctors.length).fill(0);
 
-// ==========================================
-// 📅 カレンダー・予約システムコアロジック
-// ==========================================
+        monthly.forEach(r => {
+            let docIndex = doctors.indexOf(r.doctor);
+            if (docIndex === -1) {
+                docIndex = doctors.indexOf("非常勤");
+            }
+            
+            // 💡 修正点：is_extraプロパティに件数がある場合はそれを数値化、なければcount、それもなければ1とする
+            let amt = 1;
+            if (r.hasOwnProperty('is_extra')) {
+                amt = Number(r.is_extra) || 0;
+            } else if (r.hasOwnProperty('count')) {
+                amt = Number(r.count) || 0;
+            }
+            
+            if (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") {
+                barDataRemote[docIndex] += amt;
+            } else {
+                barDataNormal[docIndex] += amt;
+            }
+        });
 
-// スロットの自動生成
-async function ensureSlotsExist(date) {
-  const { data: existing } = await supabase.from('slots').select('id').eq('date', date).neq('time', '00:00').limit(1);
-  if (existing && existing.length > 0) return;
+        let tN = 0, tR = 0;
+        document.getElementById("summaryBody").innerHTML = doctors.map((d, i) => {
+            const n = barDataNormal[i];
+            const r = barDataRemote[i];
+            const total = n + r;
+            const rate = total > 0 ? ((r / total) * 100).toFixed(1) : "0.0";
+            tN += n; tR += r;
+            return `<tr><td>${d}</td><td>${n}</td><td>${r}</td><td>${total}</td><td class="highlight">${rate}%</td></tr>`;
+        }).join("");
 
-  const d = new Date(date);
-  const day = d.getDay();
-  let times = ["09:00","09:30","10:00","10:30","11:00","11:30","12:00"];
-  if (day === 6) { times = times.concat(["14:30", "15:00"]); }
-  else if (day !== 0) { times = times.concat(["15:00","15:30","16:00","16:30","17:00","17:30","18:00"]); }
-  
-  const inserts = times.map(t => ({ date, time: t, is_extra: 0, status: "" }));
-  await supabase.from('slots').insert(inserts);
+        const totalRate = (tN + tR) > 0 ? ((tR / (tN + tR)) * 100).toFixed(1) : "0.0";
+        document.getElementById("summaryFoot").innerHTML = `<tr><td>総合計</td><td>${tN}</td><td>${tR}</td><td>${tN+tR}</td><td>${totalRate}%</td></tr>`;
+
+        // 💡 修正点：年間・累計の集計用関数でも is_extra を正しく判定して加算する
+        const calcTotal = (dataset) => dataset.reduce((sum, r) => {
+            if (r.hasOwnProperty('status') && r.status !== 'done') return sum;
+            let amt = 1;
+            if (r.hasOwnProperty('is_extra')) {
+                amt = Number(r.is_extra) || 0;
+            } else if (r.hasOwnProperty('count')) {
+                amt = Number(r.count) || 0;
+            }
+            return sum + amt;
+        }, 0);
+
+        const yearlyData = raw.filter(r => r.date && r.date.startsWith(year));
+        document.getElementById("yearlyLabel").innerText = `${year}年 年間合計`;
+        document.getElementById("yearlyTotal").innerText = calcTotal(yearlyData).toLocaleString();
+        document.getElementById("grandTotal").innerText = calcTotal(raw).toLocaleString();
+
+        if(chart1) chart1.destroy();
+        chart1 = new Chart(document.getElementById('barChart'), {
+            type: 'bar',
+            data: { 
+                labels: doctors, 
+                datasets: [
+                    { label:'通常撮影', data:barDataNormal, backgroundColor:'#1976d2', borderColor: '#1565c0', borderWidth: 1 }, 
+                    { label:'読影依頼', data:barDataRemote, backgroundColor:'#d81b60', borderColor: '#c2185b', borderWidth: 1 }
+                ]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked:true, grid: { display: false } }, y: { stacked:true, beginAtZero: true, grid: { color: '#eaeaea' } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+
+        const selYearInt = parseInt(year);
+        const years = [selYearInt, selYearInt - 1, selYearInt - 2];
+        const colors = ['#0288d1', '#43a047', '#f57c00'];
+        const lineSets = years.map((y, i) => {
+            const counts = [];
+            for(let m=1; m<=12; m++) {
+                const mStr = `${y}-${String(m).padStart(2,'0')}`;
+                const mData = raw.filter(r => r.date && r.date.startsWith(mStr));
+                counts.push(calcTotal(mData));
+            }
+            return { 
+                label: `${y}年`, data: counts, borderColor: colors[i], backgroundColor: colors[i],
+                fill: false, tension: 0.15, borderWidth: 3, pointRadius: 4
+            };
+        });
+
+        if(chart2) chart2.destroy();
+        chart2 = new Chart(document.getElementById('lineChart'), {
+            type: 'line',
+            data: { labels: Array.from({length:12}, (_,i)=>`${i+1}月`), datasets: lineSets },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, grid: { color: '#eaeaea' }, title: { display: true, text: '撮影件数' } }, x: { grid: { display: false } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    } catch (e) {
+        console.error("統計更新エラー:", e);
+    }
 }
-
-// 予約枠取得
-app.get("/api/slots", async (req, res) => {
-  const date = req.query.date;
-  await ensureSlotsExist(date);
-  const { data } = await supabase.from('slots').select('*').eq('date', date).neq('time', '00:00').order('time', { ascending: true });
-  res.json(data || []);
-});
-
-// 枠の追加
-app.post("/api/add", async (req, res) => {
-  const { date } = req.body;
-  const { data: latest } = await supabase.from('slots').select('time').eq('date', date).neq('time', '00:00').order('time', { ascending: false }).limit(1);
-  let [h, m] = (latest && latest.length > 0 ? latest[0].time : "18:00").split(":").map(Number);
-  m += 15; if(m >= 60){ h++; m -= 60; }
-  const newTime = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  await supabase.from('slots').insert([{ date, time: newTime, is_extra: 1, status: "" }]);
-  res.json({ status: "ok" });
-});
-
-// 予約データ更新窓口
-app.post("/api/update", async (req, res) => {
-    const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
-    if (!id) return res.json({ status: "ignored" });
-
-    try {
-        const { data: currentSlot, error: fetchError } = await supabase.from('slots').select('status').eq('id', id).single();
-        if (fetchError) throw fetchError;
-
-        let updateData = {};
-        if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
-        if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
-        if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
-        if (part !== undefined && part !== null) updateData.part = part;
-        if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
-        
-        if (currentSlot && currentSlot.status === 'done') {
-            updateData.status = 'done';
-        } else {
-            if (status !== undefined && status !== null) updateData.status = status;
-        }
-        
-        if (Object.keys(updateData).length === 0) return res.json({ status: "ignored" });
-        
-        const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
-        if (updateError) throw updateError;
-        
-        res.json({ status: "ok" });
-    } catch (err) {
-        console.error("データ更新エラー:", err);
-        return res.status(500).json({ error: "更新に失敗しました" });
-    }
-});
-
-// 読影ステータス変更
-app.post("/api/remote", async (req, res) => {
-    const { id, patient_name, patient_id, doctor } = req.body;
-    let updateData = { is_remote: 1 };
-    if (patient_name !== undefined) updateData.patient_name = patient_name || null;
-    if (patient_id !== undefined) updateData.patient_id = patient_id || null;
-    if (doctor !== undefined && doctor !== null && doctor !== "") updateData.doctor = doctor;
-    
-    const { error } = await supabase.from('slots').update(updateData).eq('id', id);
-    if (error) return res.status(500).json(error);
-    res.json({ status: "ok" });
-});
-
-// 撮影開始
-app.post("/api/start", async (req, res) => {
-  const now = new Date().toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
-  const { id, patient_name, patient_id, part } = req.body;
-  await supabase.from('slots').update({ 
-    status: 'scanning', 
-    start_time: now, 
-    patient_name: patient_name || null,
-    patient_id: patient_id || null,
-    part: part || null
-  }).eq('id', id);
-  res.json({ status: "ok" });
-});
-
-// 削除（リセット）
-app.post("/api/delete", async (req, res) => {
-  await supabase.from('slots').update({
-    patient_id: null, patient_name: null, part: null, status: "", doctor: null, is_remote: 0, start_time: null
-  }).eq('id', req.body.id);
-  res.json({ status: "ok" });
-});
-
-// ==========================================
-// 📊 【完全版】過去月固定 ＆ 直近2ヶ月リアルタイム集計API
-// ==========================================
-app.get("/api/report/all", async (req, res) => {
-    try {
-        const now = new Date();
-        const thisMonthStr = now.toISOString().substring(0, 7); 
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-
-        const formattedData = [];
-
-        // 1. summary から取得
-        const { data: summaryData, error: summaryError } = await supabase
-            .from('monthly_summary')
-            .select('year_month, doctor, is_remote, total_count');
-
-        if (summaryError) throw summaryError;
-
-        if (summaryData) {
-            summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
-
-                formattedData.push({
-                    date: `${r.year_month}-01`,
-                    doctor: r.doctor,
-                    is_remote: r.is_remote,
-                    count: Number(r.total_count)
-                });
-            });
-        }
-
-        // 2. 直近2ヶ月の生データ
-        const startOfLastMonth = `${lastMonthStr}-01`; 
-        const endOfThisMonth = `${thisMonthStr}-31`;   
-
-        const { data: realTimeData, error: realTimeError } = await supabase
-            .from('slots')
-            .select('date, doctor, is_remote, is_extra, status')
-            .eq('status', 'done')
-            .gte('date', startOfLastMonth)
-            .lte('date', endOfThisMonth)
-            .range(0, 99999);
-
-        if (realTimeError) throw realTimeError;
-
-        if (realTimeData) {
-            realTimeData.forEach(r => {
-                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                formattedData.push({
-                    date: r.date,
-                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                    is_remote: (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1") ? 1 : 0,
-                    count: rowCount
-                });
-            });
-        }
-
-        res.json(formattedData);
-
-    } catch (err) {
-        console.error("レポートAPIエラー:", err);
-        res.status(500).json({ error: "データ取得に失敗しました" });
-    }
-});
-
-// 予約登録
-app.post('/api/reserve', async (req, res) => {
-    const { id, patient_name, part, patient_id } = req.body;
-    await supabase.from('slots').update({ patient_name, part, patient_id: patient_id || "", status: 'waiting' }).eq('id', id);
-    res.json({ success: true });
-});
-
-// 検索
-app.get('/api/search', async (req, res) => {
-    const { data } = await supabase.from('slots').select('*').eq('patient_id', req.query.id).order('date', { ascending: false });
-    res.json(data);
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => { console.log(`MRI System is running on port ${PORT}`); });
+updateCharts();
+</script>
+</body>
+</html>
