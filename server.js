@@ -196,7 +196,7 @@ async function syncMonthlySummary(dateStr) {
 }
 
 // ==========================================
-// 📊 【完全版】自動データ修復機能付き統計API
+// 📊 【4月絶対救出版】統計集計API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -207,24 +207,17 @@ app.get("/api/report/all", async (req, res) => {
 
         const formattedData = [];
 
-        // 1. まずはサマリーテーブルから過去データを取得
+        // 1. サマリーテーブルから過去データを取得（ただしバグっている4月は除外して取得）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
 
         if (summaryError) throw summaryError;
 
-        // サマリー内にデータが存在する月をメモするセット
-        const existingMonthsInSummary = new Set();
-
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
-                
-                // トータルカウントが0より大きい場合のみ、データが存在するとみなす
-                if (Number(r.total_count) > 0) {
-                    existingMonthsInSummary.add(r.year_month);
-                }
+                // 「今月」「先月」および「問題の4月(2026-04)」はサマリー側からは完全に除外
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr || r.year_month === "2026-04") return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -236,45 +229,29 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 🛡️ 【自動データ修復】2026年1月〜先々月までの間で、サマリーに存在しない（バグで消えている）月を検出
-        const currentYear = now.getFullYear();
-        for (let m = 1; m <= 12; m++) {
-            const checkingMonthStr = `${currentYear}-${String(m).padStart(2, '0')}`;
-            
-            // 今月・先月はスキップ（後で生データからリアルタイムで取るため）
-            if (checkingMonthStr === thisMonthStr || checkingMonthStr === lastMonthStr) continue;
-            
-            // 未来の月もスキップ
-            if (checkingMonthStr > thisMonthStr) break;
+        // 2. 問題の「2026年4月」を生データからピンポイントで100%強制再集計
+        const { data: aprilData, error: aprilError } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote, is_extra')
+            .eq('status', 'done')
+            .like('date', '2026-04%');
 
-            // ⚠️ もし過去月なのにサマリーテーブルに入っていなければ（4月など）、緊急修復処理を走らせる
-            if (!existingMonthsInSummary.has(checkingMonthStr)) {
-                console.log(`サマリーの欠損を検知しました。修復中: ${checkingMonthStr}`);
-                await syncMonthlySummary(`${checkingMonthStr}-01`);
-                
-                // 修復したデータをその場で生データから引っ張って、今回のレスポンスに追加
-                const { data: repairedData } = await supabase
-                    .from('slots')
-                    .select('date, doctor, is_remote, is_extra')
-                    .eq('status', 'done')
-                    .like('date', `${checkingMonthStr}%`);
-
-                if (repairedData) {
-                    repairedData.forEach(r => {
-                        const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                        const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                        formattedData.push({
-                            date: r.date,
-                            doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                            is_remote: remoteVal,
-                            count: rowCount
-                        });
-                    });
-                }
-            }
+        if (!aprilError && aprilData) {
+            aprilData.forEach(r => {
+                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                formattedData.push({
+                    date: r.date,
+                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                    is_remote: remoteVal,
+                    count: rowCount
+                });
+            });
+            // ついでに壊れていた4月のサマリーもバックグラウンドで正しい内容に上書き修復
+            syncMonthlySummary("2026-04-01");
         }
 
-        // 2. 動いている「先月」と「今月」の2ヶ月分だけを slots から安全に生データ集計
+        // 3. 通常通り動いている「先月」と「今月」の2ヶ月分を生データ集計
         const startFilter = `${lastMonthStr}-01`; 
         const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
