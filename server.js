@@ -165,17 +165,19 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+// ==========================================
 // 📊 【完全版】過去月固定 ＆ 直近2ヶ月リアルタイム集計API
+// ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const now = new Date();
-        const thisMonthStr = now.toISOString().substring(0, 7); // 例: "2026-06"
+        const thisMonthStr = now.toISOString().substring(0, 7); 
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthStr = lastMonth.toISOString().substring(0, 7); // 例: "2026-05"
+        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
 
         const formattedData = [];
 
-        // 1. 過去データを monthly_summary から一括取得（4月以前用）
+        // 1. summary から取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
@@ -184,12 +186,9 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                // 直近2ヶ月（5月・6月）は生データ側を優先するのでスキップ
                 if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
 
-                // 🚨 ここで型を数値（1 または 0）に厳密変換してフロントのクラッシュを防ぐ
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-
                 formattedData.push({
                     date: `${r.year_month}-01`,
                     doctor: r.doctor,
@@ -199,9 +198,12 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 直近2ヶ月（5月1日 〜 今月末）の生データを slots から集計
+        // 2. 直近2ヶ月の生データ（安全な日付範囲の計算）
         const startOfLastMonth = `${lastMonthStr}-01`; 
-        const endOfThisMonth = `${thisMonthStr}-31`;   
+        
+        // 当月の最終日をJavaScriptで安全に自動計算 (例: 6月なら2026-06-30を取得)
+        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const endOfThisMonth = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
         const { data: realTimeData, error: realTimeError } = await supabase
             .from('slots')
@@ -217,7 +219,6 @@ app.get("/api/report/all", async (req, res) => {
             realTimeData.forEach(r => {
                 const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-
                 formattedData.push({
                     date: r.date,
                     doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
@@ -228,6 +229,7 @@ app.get("/api/report/all", async (req, res) => {
         }
 
         res.json(formattedData);
+
     } catch (err) {
         console.error("新レポートAPIエラー:", err);
         res.status(500).json({ error: "データ取得に失敗しました" });
