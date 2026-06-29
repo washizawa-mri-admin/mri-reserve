@@ -160,7 +160,7 @@ app.post("/api/delete", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【修正版】今年全データリアルタイム集計API
+// 📊 【完全修正版】月別ループ集計API（1000件制限突破）
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -177,8 +177,7 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                // 今年のデータは summary からは除外（二重カウント防止）
-                if (r.year_month.startsWith(thisYearStr)) return;
+                if (r.year_month.startsWith(thisYearStr)) return; // 今年のデータは除外
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -190,31 +189,30 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 今年（2026年1月1日〜12月31日）のデータはすべて slots テーブルからリアルタイム取得
-        const startOfThisYear = `${thisYearStr}-01-01`;
-        const endOfThisYear = `${thisYearStr}-12-31`;
+        // 2. 今年（1月〜12月）のデータは、1ヶ月ずつ小分けにして確実に取得（上限1000件制限を完全に回避）
+        for (let m = 1; m <= 12; m++) {
+            const mStr = `${thisYearStr}-${String(m).padStart(2, '0')}`; // "2026-01", "2026-02"...
+            
+            const { data: realTimeData, error: realTimeError } = await supabase
+                .from('slots')
+                .select('date, doctor, is_remote, is_extra')
+                .eq('status', 'done')
+                .like('date', `${mStr}%`); // その月の前方一致検索
 
-        const { data: realTimeData, error: realTimeError } = await supabase
-            .from('slots')
-            .select('date, doctor, is_remote, is_extra, status')
-            .eq('status', 'done')
-            .gte('date', startOfThisYear)
-            .lte('date', endOfThisYear)
-            .range(0, 99999);
+            if (realTimeError) throw realTimeError;
 
-        if (realTimeError) throw realTimeError;
-
-        if (realTimeData) {
-            realTimeData.forEach(r => {
-                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                formattedData.push({
-                    date: r.date,
-                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                    is_remote: remoteVal,
-                    count: rowCount
+            if (realTimeData) {
+                realTimeData.forEach(r => {
+                    const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                    const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                    formattedData.push({
+                        date: r.date,
+                        doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                        is_remote: remoteVal,
+                        count: rowCount
+                    });
                 });
-            });
+            }
         }
 
         res.json(formattedData);
