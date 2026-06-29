@@ -159,7 +159,7 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 🔄 データ変更時に summary を自動更新する関数
+// 🔄 データ変更時に summary を自動同期する関数（【修正済】安全なDelete & Insert方式）
 async function syncMonthlySummary(dateStr) {
     if (!dateStr) return;
     const yearMonth = dateStr.substring(0, 7);
@@ -186,9 +186,12 @@ async function syncMonthlySummary(dateStr) {
             summaryMap[key].total_count += count;
         });
 
-        const upsertRows = Object.values(summaryMap);
-        if (upsertRows.length > 0) {
-            await supabase.from('monthly_summary').upsert(upsertRows, { onConflict: 'year_month,doctor,is_remote' });
+        const insertRows = Object.values(summaryMap);
+        
+        // ⭐ 重複制約エラーを避けるため、該当月の古い集計データを一度消してから再挿入する
+        await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
+        if (insertRows.length > 0) {
+            await supabase.from('monthly_summary').insert(insertRows);
         }
     } catch (e) {
         console.error("Summary自動上書きエラー:", e);
@@ -202,14 +205,13 @@ app.get("/api/report/all", async (req, res) => {
     try {
         const now = new Date();
         
-        // 🛠️ 動的に「今月」と「先月」を計算（年を跨いでも100%正確）
         const thisMonthStr = now.toISOString().substring(0, 7); 
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
 
         const formattedData = [];
 
-        // 1. 過去データ（先々月より前、4月含む）は、一瞬で取れる summary テーブルから高速取得
+        // 1. 過去データ（4月含む）はサマリーテーブルから爆速取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
@@ -218,7 +220,6 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                // 先月と今月のデータは summary 側からは除外（二重カウント防止）
                 if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
@@ -231,8 +232,7 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 現在進行形で動いている「先月」と「今月」の2ヶ月分だけを slots から生データ集計
-        // 2ヶ月分（約600〜700枠）に絞ることで、Supabaseの1000件制限を絶対に回避
+        // 2. 「先月」と「今月」の2ヶ月分だけを生データ集計（1000件制限を完全に回避）
         const startFilter = `${lastMonthStr}-01`; 
         const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
