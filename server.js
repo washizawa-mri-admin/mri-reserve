@@ -199,49 +199,33 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 古いドクター別撮影一覧API（互換性のために残す）
-app.get("/api/report/doctors", async (req, res) => {
-  try {
-    const { data: realTimeData } = await supabase.from('slots').select('date, doctor, status, is_extra').eq('status', 'done');
-    const stats = {};
-    if (realTimeData) {
-      realTimeData.forEach(r => {
-        const key = `${r.date}_${r.doctor}`;
-        if (!stats[key]) stats[key] = { date: r.date, doctor: r.doctor, count: 0 };
-        const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-        stats[key].count += rowCount;
-      });
-    }
-    res.json(Object.values(stats));
-  } catch (err) {
-    res.status(500).json({ error: "エラー" });
-  }
-});
-
-// ★【修正箇所】1ヶ月ごとピンポイント抽出式レポートAPI
+// ==========================================
+// 📊 【完全版】過去月固定 ＆ 直近2ヶ月リアルタイム集計API
+// ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
-        // フロントから送られてきた対象月（例: "2026-06"）。なければ現在の月
-        const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
+        const now = new Date();
+        const currentYear = now.getFullYear();
         
-        // 選択された月の開始日と終了日を厳密に計算（例: 2026-06-01 〜 2026-06-30）
-        const [year, month] = selMonth.split('-').map(Number);
-        const startDate = `${selMonth}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const endDate = `${selMonth}-${String(lastDay).padStart(2, '0')}`;
+        // 直近2ヶ月（当月と先月）の「年-月」文字列を作成
+        const thisMonthStr = now.toISOString().substring(0, 7); // 例: "2026-06"
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthStr = lastMonth.toISOString().substring(0, 7); // 例: "2026-05"
 
         const formattedData = [];
 
-        // 1. 過去確定用 summary テーブルから「その月」のデータを取得
+        // 1. まずは「すべての過去データ（確定値）」を monthly_summary から一括取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
-            .select('year_month, doctor, is_remote, total_count')
-            .eq('year_month', selMonth); // 全件ではなく「その月」だけにピンポイント絞り込み
+            .select('year_month, doctor, is_remote, total_count');
 
         if (summaryError) throw summaryError;
 
         if (summaryData) {
             summaryData.forEach(r => {
+                // 🚨 ただし、直近2ヶ月（5月・6月）のデータが summary にあっても、ここでは無視する（生データを優先するため）
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+
                 formattedData.push({
                     date: `${r.year_month}-01`,
                     doctor: r.doctor,
@@ -251,13 +235,16 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. リアルタイム用 slots テーブルから「その月」のデータだけを取得
+        // 2. 直近2ヶ月（5月1日 〜 今月末）の生データだけを slots からピンポイント取得
+        const startOfLastMonth = `${lastMonthStr}-01`; // 5月の開始日
+        const endOfThisMonth = `${thisMonthStr}-31`;   // 6月の末日（多めに設定）
+
         const { data: realTimeData, error: realTimeError } = await supabase
             .from('slots')
             .select('date, doctor, is_remote, is_extra, status')
             .eq('status', 'done')
-            .gte('date', startDate) // その月の1日以降
-            .lte('date', endDate)   // その月の末日以下
+            .gte('date', startOfLastMonth)
+            .lte('date', endOfThisMonth)
             .range(0, 99999);
 
         if (realTimeError) throw realTimeError;
@@ -274,10 +261,91 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
+        // グラフ画面へ1年分（全月）の統合データを返却
         res.json(formattedData);
+
     } catch (err) {
         console.error("新レポートAPIエラー:", err);
         res.status(500).json({ error: "データ取得に失敗しました" });
+    }
+});
+
+// ==========================================
+// 🔄 【過去データ上書き対応】データ変更時に summary を自動更新する仕掛け
+// ==========================================
+// 予約データが更新（手修正など）されたら、その月の summary を自動で最新に上書きする関数
+async function syncMonthlySummary(dateStr) {
+    if (!dateStr) return;
+    const yearMonth = dateStr.substring(0, 7); // "2026-04" などを抽出
+
+    try {
+        // その月の生データを集計
+        const { data } = await supabase
+            .from('slots')
+            .select('doctor, is_remote, is_extra')
+            .eq('status', 'done')
+            .like('date', `${yearMonth}%`);
+
+        if (!data) return;
+
+        // ドクター・遠隔ごとに集計をまとめる
+        const summaryMap = {};
+        data.forEach(r => {
+            if (!r.doctor) return;
+            const key = `${r.doctor}_${r.is_remote ? 1 : 0}`;
+            const count = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+            if (!summaryMap[key]) {
+                summaryMap[key] = { year_month: yearMonth, doctor: r.doctor, is_remote: r.is_remote ? 1 : 0, total_count: 0 };
+            }
+            summaryMap[key].total_count += count;
+        });
+
+        // 変更があった過去月のデータを monthly_summary テーブルに「上書き保存（Upsert）」
+        const upsertRows = Object.values(summaryMap);
+        if (upsertRows.length > 0) {
+            await supabase.from('monthly_summary').upsert(upsertRows, { onConflict: 'year_month,doctor,is_remote' });
+        }
+    } catch (e) {
+        console.error("Summary自動上書きエラー:", e);
+    }
+}
+
+// 既存の更新API（/api/update）の最後に、上の上書き処理を連動させる
+app.post("/api/update", async (req, res) => {
+    const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
+    if (!id) return res.json({ status: "ignored" });
+
+    try {
+        const { data: currentSlot, error: fetchError } = await supabase.from('slots').select('status, date').eq('id', id).single();
+        if (fetchError) throw fetchError;
+
+        let updateData = {};
+        if (doctor !== undefined && doctor !== null) updateData.doctor = doctor;
+        if (patient_name !== undefined && patient_name !== null) updateData.patient_name = patient_name;
+        if (patient_id !== undefined && patient_id !== null) updateData.patient_id = patient_id;
+        if (part !== undefined && part !== null) updateData.part = part;
+        if (is_remote !== undefined && is_remote !== null) updateData.is_remote = is_remote;
+        
+        if (currentSlot && currentSlot.status === 'done') {
+            updateData.status = 'done';
+        } else {
+            if (status !== undefined && status !== null) updateData.status = status;
+        }
+        
+        if (Object.keys(updateData).length === 0) return res.json({ status: "ignored" });
+        
+        const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
+        if (updateError) throw updateError;
+        
+        // 💡 過去データに変更があった場合、自動的にその月の合計データを再計算して上書き保存する
+        if (currentSlot && currentSlot.date) {
+            await syncMonthlySummary(currentSlot.date);
+        }
+        
+        res.json({ status: "ok" });
+    } catch (err) {
+        console.error("データ更新エラー:", err);
+        return res.status(500).json({ error: "更新に失敗しました" });
     }
 });
 
