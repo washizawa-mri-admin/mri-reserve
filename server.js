@@ -159,7 +159,7 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 🔄 データ変更時に summary を自動同期する関数（【修正済】安全なDelete & Insert方式）
+// 🔄 データ変更時に summary を自動同期する関数（安全なDelete & Insert方式）
 async function syncMonthlySummary(dateStr) {
     if (!dateStr) return;
     const yearMonth = dateStr.substring(0, 7);
@@ -188,7 +188,7 @@ async function syncMonthlySummary(dateStr) {
 
         const insertRows = Object.values(summaryMap);
         
-        // ⭐ 重複制約エラーを避けるため、該当月の古い集計データを一度消してから再挿入する
+        // 重複制約エラーを避けるため、該当月の古い集計データを一度消してから再挿入する
         await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
         if (insertRows.length > 0) {
             await supabase.from('monthly_summary').insert(insertRows);
@@ -209,12 +209,17 @@ app.get("/api/report/all", async (req, res) => {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
 
+        // 🛠️ 【未来対策】常にグラフが表示する「3年前の1月」以降のサマリーだけを狙い撃ちで取得
+        const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
+        const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
+
         const formattedData = [];
 
-        // 1. 過去データ（4月含む）はサマリーテーブルから爆速取得
+        // 1. 過去データはサマリーテーブルから「直近3年分だけ」を先に絞り込んで超高速取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
-            .select('year_month, doctor, is_remote, total_count');
+            .select('year_month, doctor, is_remote, total_count')
+            .gte('year_month', cutoffMonthStr); // 👈 これで10年後、20年後も絶対にパンクしません！
 
         if (summaryError) throw summaryError;
 
