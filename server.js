@@ -96,7 +96,6 @@ app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI 
 // 📅 カレンダー・予約システムコアロジック
 // ==========================================
 
-// スロットの自動生成
 async function ensureSlotsExist(date) {
   const { data: existing } = await supabase.from('slots').select('id').eq('date', date).neq('time', '00:00').limit(1);
   if (existing && existing.length > 0) return;
@@ -111,7 +110,6 @@ async function ensureSlotsExist(date) {
   await supabase.from('slots').insert(inserts);
 }
 
-// 予約枠取得
 app.get("/api/slots", async (req, res) => {
   const date = req.query.date;
   await ensureSlotsExist(date);
@@ -119,7 +117,6 @@ app.get("/api/slots", async (req, res) => {
   res.json(data || []);
 });
 
-// 枠の追加
 app.post("/api/add", async (req, res) => {
   const { date } = req.body;
   const { data: latest } = await supabase.from('slots').select('time').eq('date', date).neq('time', '00:00').order('time', { ascending: false }).limit(1);
@@ -130,7 +127,6 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 読影ステータス変更
 app.post("/api/remote", async (req, res) => {
     const { id, patient_name, patient_id, doctor } = req.body;
     let updateData = { is_remote: 1 };
@@ -143,7 +139,6 @@ app.post("/api/remote", async (req, res) => {
     res.json({ status: "ok" });
 });
 
-// 撮影開始
 app.post("/api/start", async (req, res) => {
   const now = new Date().toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
   const { id, patient_name, patient_id, part } = req.body;
@@ -157,7 +152,6 @@ app.post("/api/start", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 削除（リセット）
 app.post("/api/delete", async (req, res) => {
   await supabase.from('slots').update({
     patient_id: null, patient_name: null, part: null, status: "", doctor: null, is_remote: 0, start_time: null
@@ -166,18 +160,15 @@ app.post("/api/delete", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【完全版】過去月固定 ＆ 直近2ヶ月リアルタイム集計API
+// 📊 【修正版】今年全データリアルタイム集計API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const now = new Date();
-        const thisMonthStr = now.toISOString().substring(0, 7); 
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-
+        const thisYearStr = String(now.getFullYear()); // "2026"
         const formattedData = [];
 
-        // 1. summary から取得
+        // 1. 過去の年（2025年以前）のデータを summary から取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
@@ -186,7 +177,8 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+                // 今年のデータは summary からは除外（二重カウント防止）
+                if (r.year_month.startsWith(thisYearStr)) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -198,19 +190,16 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 直近2ヶ月の生データ（安全な日付範囲の計算）
-        const startOfLastMonth = `${lastMonthStr}-01`; 
-        
-        // 当月の最終日をJavaScriptで安全に自動計算 (例: 6月なら2026-06-30を取得)
-        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        const endOfThisMonth = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
+        // 2. 今年（2026年1月1日〜12月31日）のデータはすべて slots テーブルからリアルタイム取得
+        const startOfThisYear = `${thisYearStr}-01-01`;
+        const endOfThisYear = `${thisYearStr}-12-31`;
 
         const { data: realTimeData, error: realTimeError } = await supabase
             .from('slots')
             .select('date, doctor, is_remote, is_extra, status')
             .eq('status', 'done')
-            .gte('date', startOfLastMonth)
-            .lte('date', endOfThisMonth)
+            .gte('date', startOfThisYear)
+            .lte('date', endOfThisYear)
             .range(0, 99999);
 
         if (realTimeError) throw realTimeError;
@@ -231,12 +220,12 @@ app.get("/api/report/all", async (req, res) => {
         res.json(formattedData);
 
     } catch (err) {
-        console.error("新レポートAPIエラー:", err);
+        console.error("レポートAPIエラー:", err);
         res.status(500).json({ error: "データ取得に失敗しました" });
     }
 });
 
-// 🔄 【過去データ上書き対応】データ変更時に summary を自動更新する関数
+// 🔄 データ変更時に summary を自動更新する関数
 async function syncMonthlySummary(dateStr) {
     if (!dateStr) return;
     const yearMonth = dateStr.substring(0, 7);
@@ -272,7 +261,6 @@ async function syncMonthlySummary(dateStr) {
     }
 }
 
-// 予約データ更新窓口
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
     if (!id) return res.json({ status: "ignored" });
@@ -299,7 +287,6 @@ app.post("/api/update", async (req, res) => {
         const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
         if (updateError) throw updateError;
         
-        // 過去データに変更があった場合、自動集計して上書き保存
         if (currentSlot && currentSlot.date) {
             await syncMonthlySummary(currentSlot.date);
         }
@@ -311,14 +298,12 @@ app.post("/api/update", async (req, res) => {
     }
 });
 
-// 予約登録
 app.post('/api/reserve', async (req, res) => {
     const { id, patient_name, part, patient_id } = req.body;
     await supabase.from('slots').update({ patient_name, part, patient_id: patient_id || "", status: 'waiting' }).eq('id', id);
     res.json({ success: true });
 });
 
-// 検索
 app.get('/api/search', async (req, res) => {
     const { data } = await supabase.from('slots').select('*').eq('patient_id', req.query.id).order('date', { ascending: false });
     res.json(data);
