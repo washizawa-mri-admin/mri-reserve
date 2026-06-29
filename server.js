@@ -93,7 +93,7 @@ app.post('/api/update-ip', async (req, res) => {
 app.use(basicAuth({ users: { 'admin': 'mri1234' }, challenge: true, realm: 'MRI System' }));
 
 // ==========================================
-// 📅 カレンダー・予約システムコアロジック（最適化版）
+// 📅 カレンダー・予約システムコアロジック
 // ==========================================
 
 // スロットの自動生成
@@ -111,11 +111,10 @@ async function ensureSlotsExist(date) {
   await supabase.from('slots').insert(inserts);
 }
 
-// 予約枠取得（カレンダー描画時のノイズとなる移行用00:00枠を綺麗に排除）
+// 予約枠取得
 app.get("/api/slots", async (req, res) => {
   const date = req.query.date;
   await ensureSlotsExist(date);
-  // カレンダー画面のfindロジックが狂わないよう、time='00:00'のデータはここで除外してフロントに渡す
   const { data } = await supabase.from('slots').select('*').eq('date', date).neq('time', '00:00').order('time', { ascending: true });
   res.json(data || []);
 });
@@ -131,7 +130,7 @@ app.post("/api/add", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 予約データ更新窓口（鉄壁ステータスガード）
+// 予約データ更新窓口
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
     if (!id) return res.json({ status: "ignored" });
@@ -200,76 +199,46 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ドクター別撮影一覧API（塊データ対応の完全防衛版）
+// 古いドクター別撮影一覧API（互換性のために残す）
 app.get("/api/report/doctors", async (req, res) => {
   try {
-    const { data: summaryData, error: summaryError } = await supabase.from('monthly_summary').select('year_month, doctor, total_count');
-    if (summaryError) throw summaryError;
-
-    const { data: realTimeData, error: realTimeError } = await supabase
-      .from('slots')
-      .select('date, doctor, status, is_extra')
-      .eq('status', 'done')
-      .not('doctor', 'is', null)
-      .neq('doctor', '')
-      .range(0, 99999);
-
-    if (realTimeError) throw realTimeError;
-
+    const { data: realTimeData } = await supabase.from('slots').select('date, doctor, status, is_extra').eq('status', 'done');
     const stats = {};
-
-    if (summaryData) {
-      summaryData.forEach(r => {
-        const key = `${r.year_month}-01_${r.doctor}`;
-        if (!stats[key]) stats[key] = { date: `${r.year_month}-01`, doctor: r.doctor, count: 0 };
-        stats[key].count += Number(r.total_count);
-      });
-    }
-
     if (realTimeData) {
       realTimeData.forEach(r => {
         const key = `${r.date}_${r.doctor}`;
         if (!stats[key]) stats[key] = { date: r.date, doctor: r.doctor, count: 0 };
-        // 💡 塊データ（is_extra）の数値を安全に評価して加算
         const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
         stats[key].count += rowCount;
       });
     }
-
-    res.json(Object.values(stats).sort((a, b) => b.date.localeCompare(a.date)));
+    res.json(Object.values(stats));
   } catch (err) {
-    console.error("ドクター別集計APIエラー:", err);
-    return res.status(500).json({ error: "集計データの取得に失敗しました" });
+    res.status(500).json({ error: "エラー" });
   }
 });
 
-// 加算式超軽量レポートAPI
+// ★【修正箇所】1ヶ月ごとピンポイント抽出式レポートAPI
 app.get("/api/report/all", async (req, res) => {
     try {
+        // フロントから送られてきた対象月（例: "2026-06"）。なければ現在の月
         const selMonth = req.query.month || new Date().toISOString().substring(0, 7);
-        const currentYear = parseInt(selMonth.split('-')[0]);
-        const startYear = currentYear - 2;
-        const endDate = `${currentYear}-12-31`;
+        
+        // 選択された月の開始日と終了日を厳密に計算（例: 2026-06-01 〜 2026-06-30）
+        const [year, month] = selMonth.split('-').map(Number);
+        const startDate = `${selMonth}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${selMonth}-${String(lastDay).padStart(2, '0')}`;
 
+        const formattedData = [];
+
+        // 1. 過去確定用 summary テーブルから「その月」のデータを取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
-            .gte('year_month', `${startYear}-01`)
-            .lte('year_month', `${currentYear}-12`);
+            .eq('year_month', selMonth); // 全件ではなく「その月」だけにピンポイント絞り込み
 
         if (summaryError) throw summaryError;
-
-        const { data: realTimeData, error: realTimeError } = await supabase
-            .from('slots')
-            .select('date, doctor, is_remote, is_extra')
-            .eq('status', 'done')
-            .gte('date', '2026-04-01')
-            .lte('date', endDate)
-            .range(0, 99999);
-
-        if (realTimeError) throw realTimeError;
-
-        const formattedData = [];
 
         if (summaryData) {
             summaryData.forEach(r => {
@@ -281,6 +250,17 @@ app.get("/api/report/all", async (req, res) => {
                 });
             });
         }
+
+        // 2. リアルタイム用 slots テーブルから「その月」のデータだけを取得
+        const { data: realTimeData, error: realTimeError } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote, is_extra, status')
+            .eq('status', 'done')
+            .gte('date', startDate) // その月の1日以降
+            .lte('date', endDate)   // その月の末日以下
+            .range(0, 99999);
+
+        if (realTimeError) throw realTimeError;
 
         if (realTimeData) {
             realTimeData.forEach(r => {
