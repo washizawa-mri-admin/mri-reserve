@@ -196,7 +196,7 @@ async function syncMonthlySummary(dateStr) {
 }
 
 // ==========================================
-// 📊 【4月絶対救出版】統計集計API
+// 📊 【ガチガチ完全防衛版】統計集計API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -207,7 +207,7 @@ app.get("/api/report/all", async (req, res) => {
 
         const formattedData = [];
 
-        // 1. サマリーテーブルから過去データを取得（ただしバグっている4月は除外して取得）
+        // 1. サマリーテーブルから過去データを取得（4月は確実に生データから取るので除外）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
@@ -216,38 +216,46 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                // 「今月」「先月」および「問題の4月(2026-04)」はサマリー側からは完全に除外
                 if (r.year_month === thisMonthStr || r.year_month === lastMonthStr || r.year_month === "2026-04") return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
                     date: `${r.year_month}-01`,
-                    doctor: r.doctor,
+                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
                     is_remote: remoteVal,
                     count: Number(r.total_count)
                 });
             });
         }
 
-        // 2. 問題の「2026年4月」を生データからピンポイントで100%強制再集計
+        // 2. 🚨【4月超救出作戦】サマリーを一切信じず、条件も緩めて完全強制抽出
         const { data: aprilData, error: aprilError } = await supabase
             .from('slots')
-            .select('date, doctor, is_remote, is_extra')
-            .eq('status', 'done')
-            .like('date', '2026-04%');
+            .select('date, doctor, is_remote, is_extra, status')
+            .like('date', '2026-04%'); // status=doneすら外して、4月のデータが何件あるかログで暴く
 
+        console.log(`--- [LOG] 4月の生データ抽出結果 件数: ${aprilData ? aprilData.length : 0}件 ---`);
+        
         if (!aprilError && aprilData) {
+            let activeAprilCount = 0;
             aprilData.forEach(r => {
-                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                formattedData.push({
-                    date: r.date,
-                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                    is_remote: remoteVal,
-                    count: rowCount
-                });
+                // カウントするのはステータスが done（または念のため scanning）のもの
+                if (r.status === 'done' || r.status === 'scanning') {
+                    activeAprilCount++;
+                    const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                    const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                    
+                    formattedData.push({
+                        date: r.date,
+                        doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                        is_remote: remoteVal,
+                        count: rowCount
+                    });
+                }
             });
-            // ついでに壊れていた4月のサマリーもバックグラウンドで正しい内容に上書き修復
+            console.log(`--- [LOG] 集計対象になった4月の有効データ: ${activeAprilCount}件 ---`);
+            
+            // 正しい状態をサマリーへ同期
             syncMonthlySummary("2026-04-01");
         }
 
