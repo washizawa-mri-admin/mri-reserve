@@ -160,15 +160,20 @@ app.post("/api/delete", async (req, res) => {
 });
 
 // ==========================================
-// 📊 【完全修正版】月別ループ集計API（1000件制限突破）
+// 📊 【ハイブリッド高速版】未来永劫重くならない統計API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const now = new Date();
-        const thisYearStr = String(now.getFullYear()); // "2026"
+        
+        // 🛠️ 動的に「今月」と「先月」を計算（年を跨いでも100%正確）
+        const thisMonthStr = now.toISOString().substring(0, 7); 
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
+
         const formattedData = [];
 
-        // 1. 過去の年（2025年以前）のデータを summary から取得
+        // 1. 先々月より前の過去データは、一瞬で取れる summary テーブルから取得
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count');
@@ -177,7 +182,8 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month.startsWith(thisYearStr)) return; // 今年のデータは除外
+                // 先月と今月のデータは summary 側からは除外（二重カウント防止）
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -189,30 +195,32 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 今年（1月〜12月）のデータは、1ヶ月ずつ小分けにして確実に取得（上限1000件制限を完全に回避）
-        for (let m = 1; m <= 12; m++) {
-            const mStr = `${thisYearStr}-${String(m).padStart(2, '0')}`; // "2026-01", "2026-02"...
-            
-            const { data: realTimeData, error: realTimeError } = await supabase
-                .from('slots')
-                .select('date, doctor, is_remote, is_extra')
-                .eq('status', 'done')
-                .like('date', `${mStr}%`); // その月の前方一致検索
+        // 2. 動いている「先月」と「今月」の2ヶ月分だけを slots から生データ集計
+        // 4月が消えた原因だった日付の決め打ちを排除し、安全に期間指定
+        const startFilter = `${lastMonthStr}-01`; 
+        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
-            if (realTimeError) throw realTimeError;
+        const { data: realTimeData, error: realTimeError } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote, is_extra, status')
+            .eq('status', 'done')
+            .gte('date', startFilter)
+            .lte('date', endFilter); // 1000件制限に絶対かからない2ヶ月縛り
 
-            if (realTimeData) {
-                realTimeData.forEach(r => {
-                    const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                    const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                    formattedData.push({
-                        date: r.date,
-                        doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                        is_remote: remoteVal,
-                        count: rowCount
-                    });
+        if (realTimeError) throw realTimeError;
+
+        if (realTimeData) {
+            realTimeData.forEach(r => {
+                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                formattedData.push({
+                    date: r.date,
+                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                    is_remote: remoteVal,
+                    count: rowCount
                 });
-            }
+            });
         }
 
         res.json(formattedData);
