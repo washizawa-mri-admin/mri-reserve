@@ -159,78 +159,6 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ==========================================
-// 📊 【ハイブリッド高速版】未来永劫重くならない統計API
-// ==========================================
-app.get("/api/report/all", async (req, res) => {
-    try {
-        const now = new Date();
-        
-        // 🛠️ 動的に「今月」と「先月」を計算（年を跨いでも100%正確）
-        const thisMonthStr = now.toISOString().substring(0, 7); 
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-
-        const formattedData = [];
-
-        // 1. 先々月より前の過去データは、一瞬で取れる summary テーブルから取得
-        const { data: summaryData, error: summaryError } = await supabase
-            .from('monthly_summary')
-            .select('year_month, doctor, is_remote, total_count');
-
-        if (summaryError) throw summaryError;
-
-        if (summaryData) {
-            summaryData.forEach(r => {
-                // 先月と今月のデータは summary 側からは除外（二重カウント防止）
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
-
-                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                formattedData.push({
-                    date: `${r.year_month}-01`,
-                    doctor: r.doctor,
-                    is_remote: remoteVal,
-                    count: Number(r.total_count)
-                });
-            });
-        }
-
-        // 2. 動いている「先月」と「今月」の2ヶ月分だけを slots から生データ集計
-        // 4月が消えた原因だった日付の決め打ちを排除し、安全に期間指定
-        const startFilter = `${lastMonthStr}-01`; 
-        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
-
-        const { data: realTimeData, error: realTimeError } = await supabase
-            .from('slots')
-            .select('date, doctor, is_remote, is_extra, status')
-            .eq('status', 'done')
-            .gte('date', startFilter)
-            .lte('date', endFilter); // 1000件制限に絶対かからない2ヶ月縛り
-
-        if (realTimeError) throw realTimeError;
-
-        if (realTimeData) {
-            realTimeData.forEach(r => {
-                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                formattedData.push({
-                    date: r.date,
-                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
-                    is_remote: remoteVal,
-                    count: rowCount
-                });
-            });
-        }
-
-        res.json(formattedData);
-
-    } catch (err) {
-        console.error("レポートAPIエラー:", err);
-        res.status(500).json({ error: "データ取得に失敗しました" });
-    }
-});
-
 // 🔄 データ変更時に summary を自動更新する関数
 async function syncMonthlySummary(dateStr) {
     if (!dateStr) return;
@@ -266,6 +194,120 @@ async function syncMonthlySummary(dateStr) {
         console.error("Summary自動上書きエラー:", e);
     }
 }
+
+// ==========================================
+// 📊 【完全版】自動データ修復機能付き統計API
+// ==========================================
+app.get("/api/report/all", async (req, res) => {
+    try {
+        const now = new Date();
+        const thisMonthStr = now.toISOString().substring(0, 7); 
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
+
+        const formattedData = [];
+
+        // 1. まずはサマリーテーブルから過去データを取得
+        const { data: summaryData, error: summaryError } = await supabase
+            .from('monthly_summary')
+            .select('year_month, doctor, is_remote, total_count');
+
+        if (summaryError) throw summaryError;
+
+        // サマリー内にデータが存在する月をメモするセット
+        const existingMonthsInSummary = new Set();
+
+        if (summaryData) {
+            summaryData.forEach(r => {
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+                
+                // トータルカウントが0より大きい場合のみ、データが存在するとみなす
+                if (Number(r.total_count) > 0) {
+                    existingMonthsInSummary.add(r.year_month);
+                }
+
+                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                formattedData.push({
+                    date: `${r.year_month}-01`,
+                    doctor: r.doctor,
+                    is_remote: remoteVal,
+                    count: Number(r.total_count)
+                });
+            });
+        }
+
+        // 🛡️ 【自動データ修復】2026年1月〜先々月までの間で、サマリーに存在しない（バグで消えている）月を検出
+        const currentYear = now.getFullYear();
+        for (let m = 1; m <= 12; m++) {
+            const checkingMonthStr = `${currentYear}-${String(m).padStart(2, '0')}`;
+            
+            // 今月・先月はスキップ（後で生データからリアルタイムで取るため）
+            if (checkingMonthStr === thisMonthStr || checkingMonthStr === lastMonthStr) continue;
+            
+            // 未来の月もスキップ
+            if (checkingMonthStr > thisMonthStr) break;
+
+            // ⚠️ もし過去月なのにサマリーテーブルに入っていなければ（4月など）、緊急修復処理を走らせる
+            if (!existingMonthsInSummary.has(checkingMonthStr)) {
+                console.log(`サマリーの欠損を検知しました。修復中: ${checkingMonthStr}`);
+                await syncMonthlySummary(`${checkingMonthStr}-01`);
+                
+                // 修復したデータをその場で生データから引っ張って、今回のレスポンスに追加
+                const { data: repairedData } = await supabase
+                    .from('slots')
+                    .select('date, doctor, is_remote, is_extra')
+                    .eq('status', 'done')
+                    .like('date', `${checkingMonthStr}%`);
+
+                if (repairedData) {
+                    repairedData.forEach(r => {
+                        const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                        const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                        formattedData.push({
+                            date: r.date,
+                            doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                            is_remote: remoteVal,
+                            count: rowCount
+                        });
+                    });
+                }
+            }
+        }
+
+        // 2. 動いている「先月」と「今月」の2ヶ月分だけを slots から安全に生データ集計
+        const startFilter = `${lastMonthStr}-01`; 
+        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
+
+        const { data: realTimeData, error: realTimeError } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote, is_extra, status')
+            .eq('status', 'done')
+            .gte('date', startFilter)
+            .lte('date', endFilter);
+
+        if (realTimeError) throw realTimeError;
+
+        if (realTimeData) {
+            realTimeData.forEach(r => {
+                const rowCount = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                formattedData.push({
+                    date: r.date,
+                    doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
+                    is_remote: remoteVal,
+                    count: rowCount
+                });
+            });
+        }
+
+        res.json(formattedData);
+
+    } catch (err) {
+        console.error("レポートAPIエラー:", err);
+        res.status(500).json({ error: "データ取得に失敗しました" });
+    }
+});
 
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
