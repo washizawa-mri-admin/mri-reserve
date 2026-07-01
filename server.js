@@ -159,46 +159,8 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 🔄 データ変更時に summary を自動同期する関数（安全なDelete & Insert方式）
-async function syncMonthlySummary(dateStr) {
-    if (!dateStr) return;
-    const yearMonth = dateStr.substring(0, 7);
-
-    try {
-        const { data } = await supabase
-            .from('slots')
-            .select('doctor, is_remote, is_extra')
-            .eq('status', 'done')
-            .like('date', `${yearMonth}%`);
-
-        if (!data) return;
-
-        const summaryMap = {};
-        data.forEach(r => {
-            if (!r.doctor) return;
-            const isRemoteNum = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-            const key = `${r.doctor}_${isRemoteNum}`;
-            const count = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-            
-            if (!summaryMap[key]) {
-                summaryMap[key] = { year_month: yearMonth, doctor: r.doctor, is_remote: isRemoteNum, total_count: 0 };
-            }
-            summaryMap[key].total_count += count;
-        });
-
-        const insertRows = Object.values(summaryMap);
-        
-        await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
-        if (insertRows.length > 0) {
-            await supabase.from('monthly_summary').insert(insertRows);
-        }
-    } catch (e) {
-        console.error("Summary自動上書きエラー:", e);
-    }
-}
-
 // ==========================================
-// 📊 【ハイブリッド高速版】未来永劫重くならない統計API
+// 📊 【安定版】3ヶ月分の生データを常に安全に読み込むAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -207,29 +169,15 @@ app.get("/api/report/all", async (req, res) => {
         const thisMonthStr = now.toISOString().substring(0, 7); 
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-
-        // 🌟【保険：自動救出ロジック】先々月のサマリーが万が一空っぽならその場で自動生成
         const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7);
 
-        const { data: checkSummary } = await supabase
-            .from('monthly_summary')
-            .select('id')
-            .eq('year_month', twoMonthsAgoStr)
-            .limit(1);
-
-        if (!checkSummary || checkSummary.length === 0) {
-            console.log(`自動システム：${twoMonthsAgoStr} 分のサマリーが未作成のため、自動生成します。`);
-            await syncMonthlySummary(`${twoMonthsAgoStr}-01`);
-        }
-
-        // 🛠️ 【未来対策】常にグラフが表示する「3年前の1月」以降のサマリーだけを狙い撃ちで取得
         const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
         const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
 
         const formattedData = [];
 
-        // 1. 過去データはサマリーテーブルから「直近3年分だけ」を先に絞り込んで超高速取得
+        // 1. 過去データはサマリーテーブルから取得（直近3ヶ月分はここでは除外）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
@@ -239,7 +187,7 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr || r.year_month === twoMonthsAgoStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -251,8 +199,8 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 「先月」と「今月」の2ヶ月分だけを生データ集計（1000件制限を完全に回避）
-        const startFilter = `${lastMonthStr}-01`; 
+        // 2. 「先々月」「先月」「今月」の3ヶ月分を常に生データから直接集計（これでバグ要素を完全排除）
+        const startFilter = `${twoMonthsAgoStr}-01`; 
         const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
@@ -286,6 +234,7 @@ app.get("/api/report/all", async (req, res) => {
     }
 });
 
+// ※ データベースの不整合を防ぐため、予約追加時の自動同期（syncMonthlySummary）は呼び出さない形に集約しています
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
     if (!id) return res.json({ status: "ignored" });
@@ -311,10 +260,6 @@ app.post("/api/update", async (req, res) => {
         
         const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
         if (updateError) throw updateError;
-        
-        if (currentSlot && currentSlot.date) {
-            await syncMonthlySummary(currentSlot.date);
-        }
         
         res.json({ status: "ok" });
     } catch (err) {
