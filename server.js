@@ -198,7 +198,7 @@ async function syncMonthlySummary(dateStr) {
 }
 
 // ==========================================
-// 📊 【ハイブリッド高速版】未来永劫重くならない統計API
+// 📊 【一時変更版】5月・6月・7月を生データから強制読み込みするAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -207,29 +207,17 @@ app.get("/api/report/all", async (req, res) => {
         const thisMonthStr = now.toISOString().substring(0, 7); 
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-
-        // 🌟【自動救出ロジック】先々月のサマリーがなければ自動生成
+        
+        // 👈 一時的に「先々月（5月）」の文字列も作っておきます
         const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7);
 
-        const { data: checkSummary } = await supabase
-            .from('monthly_summary')
-            .select('id')
-            .eq('year_month', twoMonthsAgoStr)
-            .limit(1);
-
-        if (!checkSummary || checkSummary.length === 0) {
-            console.log(`自動システム：${twoMonthsAgoStr} 分のサマリーが未作成のため、自動生成します。`);
-            await syncMonthlySummary(`${twoMonthsAgoStr}-01`);
-        }
-
-        // 🛠️ 【未来対策】常にグラフが表示する「3年前の1月」以降のサマリーだけを狙い撃ちで取得
         const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
         const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
 
         const formattedData = [];
 
-        // 1. 過去データはサマリーテーブルから「直近3年分だけ」を先に絞り込んで超高速取得
+        // 1. 過去データはサマリーテーブルから取得（ただし5月、6月、7月は除外する）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
@@ -239,7 +227,8 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+                // 👈 5月、6月、7月のサマリーはここではスキップ（二重集計を防ぐため）
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr || r.year_month === twoMonthsAgoStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -251,8 +240,8 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 「先月」と「今月」の2ヶ月分だけを生データ集計（1000件制限を完全に回避）
-        const startFilter = `${lastMonthStr}-01`; 
+        // 2. 「5月」「6月」「7月」の3ヶ月分を生データから直接集計
+        const startFilter = `${twoMonthsAgoStr}-01`; // 👈 これで2026-05-01からになります
         const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
@@ -335,41 +324,11 @@ app.get('/api/search', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => { 
-    console.log(`MRI System is running on port ${PORT}`); 
-});
+app.listen(PORT, "0.0.0.0", () => { console.log(`MRI System is running on port ${PORT}`); });
 
-// ==========================================
-// 🩹 【今回限り】5月データ強制ロック処理
-// ==========================================
+// 🌟5月の自動同期を起動時に強制実行させるフック
 (async () => {
-    console.log("--- [🚨5月強制ロック処理スタート] ---");
-    try {
-        const yearMonth = "2026-05";
-        const { data } = await supabase.from('slots').select('doctor, is_remote, is_extra').eq('status', 'done').like('date', `${yearMonth}%`);
-        console.log(`5月の生の撮影完了データ: ${data?.length || 0} 件`);
-
-        if (data && data.length > 0) {
-            const summaryMap = {};
-            data.forEach(r => {
-                if (!r.doctor) return;
-                const isRemoteNum = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
-                const key = `${r.doctor}_${isRemoteNum}`;
-                const count = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
-                if (!summaryMap[key]) {
-                    summaryMap[key] = { year_month: yearMonth, doctor: r.doctor, is_remote: isRemoteNum, total_count: 0 };
-                }
-                summaryMap[key].total_count += count;
-            });
-            const insertRows = Object.values(summaryMap);
-            await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
-            const { error: insertError } = await supabase.from('monthly_summary').insert(insertRows);
-            if (insertError) {
-                console.log("5月の強制保存に失敗:", insertError);
-            } else {
-                console.log("🎉 5月のデータを強制的にサマリーへ固定しました！", insertRows);
-            }
-        }
-    } catch (e) { console.error("強制ロック中にエラーが発生:", e); }
-    console.log("--- [🚨5月強制ロック処理終了] ---");
+    console.log("--- 5月のサマリー自動作成トリガー実行 ---");
+    await syncMonthlySummary("2026-05-01");
+    console.log("--- トリガー完了 ---");
 })();
