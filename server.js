@@ -209,6 +209,21 @@ app.get("/api/report/all", async (req, res) => {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
 
+        // 🌟【自動救出ロジック】先々月（直近2ヶ月から完全に外れた月）のサマリーがなければ自動生成
+        const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7);
+
+        const { data: checkSummary } = await supabase
+            .from('monthly_summary')
+            .select('id')
+            .eq('year_month', twoMonthsAgoStr)
+            .limit(1);
+
+        if (!checkSummary || checkSummary.length === 0) {
+            console.log(`自動システム：${twoMonthsAgoStr} 分のサマリーが未作成のため、自動生成します。`);
+            await syncMonthlySummary(`${twoMonthsAgoStr}-01`);
+        }
+
         // 🛠️ 【未来対策】常にグラフが表示する「3年前の1月」以降のサマリーだけを狙い撃ちで取得
         const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
         const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
@@ -219,7 +234,7 @@ app.get("/api/report/all", async (req, res) => {
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
-            .gte('year_month', cutoffMonthStr); // 👈 これで10年後、20年後も絶対にパンクしません！
+            .gte('year_month', cutoffMonthStr);
 
         if (summaryError) throw summaryError;
 
