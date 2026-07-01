@@ -188,7 +188,6 @@ async function syncMonthlySummary(dateStr) {
 
         const insertRows = Object.values(summaryMap);
         
-        // 重複制約エラーを避けるため、該当月の古い集計データを一度消してから再挿入する
         await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
         if (insertRows.length > 0) {
             await supabase.from('monthly_summary').insert(insertRows);
@@ -209,7 +208,7 @@ app.get("/api/report/all", async (req, res) => {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
 
-        // 🌟【自動救出ロジック】先々月（直近2ヶ月から完全に外れた月）のサマリーがなければ自動生成
+        // 🌟【自動救出ロジック】先々月のサマリーがなければ自動生成
         const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7);
 
@@ -336,4 +335,41 @@ app.get('/api/search', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => { console.log(`MRI System is running on port ${PORT}`); });
+app.listen(PORT, "0.0.0.0", () => { 
+    console.log(`MRI System is running on port ${PORT}`); 
+});
+
+// ==========================================
+// 🩹 【今回限り】5月データ強制ロック処理
+// ==========================================
+(async () => {
+    console.log("--- [🚨5月強制ロック処理スタート] ---");
+    try {
+        const yearMonth = "2026-05";
+        const { data } = await supabase.from('slots').select('doctor, is_remote, is_extra').eq('status', 'done').like('date', `${yearMonth}%`);
+        console.log(`5月の生の撮影完了データ: ${data?.length || 0} 件`);
+
+        if (data && data.length > 0) {
+            const summaryMap = {};
+            data.forEach(r => {
+                if (!r.doctor) return;
+                const isRemoteNum = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+                const key = `${r.doctor}_${isRemoteNum}`;
+                const count = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+                if (!summaryMap[key]) {
+                    summaryMap[key] = { year_month: yearMonth, doctor: r.doctor, is_remote: isRemoteNum, total_count: 0 };
+                }
+                summaryMap[key].total_count += count;
+            });
+            const insertRows = Object.values(summaryMap);
+            await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
+            const { error: insertError } = await supabase.from('monthly_summary').insert(insertRows);
+            if (insertError) {
+                console.log("5月の強制保存に失敗:", insertError);
+            } else {
+                console.log("🎉 5月のデータを強制的にサマリーへ固定しました！", insertRows);
+            }
+        }
+    } catch (e) { console.error("強制ロック中にエラーが発生:", e); }
+    console.log("--- [🚨5月強制ロック処理終了] ---");
+})();
