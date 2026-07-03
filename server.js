@@ -159,25 +159,85 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+// 🔄 サマリーテーブルへ安全に上書き保存（Delete & Insert）する内部共通関数
+async function syncMonthlySummary(yearMonth) {
+    if (!yearMonth) return;
+    try {
+        const { data } = await supabase
+            .from('slots')
+            .select('doctor, is_remote, is_extra')
+            .eq('status', 'done')
+            .like('date', `${yearMonth}%`);
+
+        if (!data) return;
+
+        const summaryMap = {};
+        data.forEach(r => {
+            if (!r.doctor) return;
+            const isRemoteNum = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
+            const key = `${r.doctor}_${isRemoteNum}`;
+            const count = (r.is_extra && Number(r.is_extra) > 0) ? Number(r.is_extra) : 1;
+            
+            if (!summaryMap[key]) {
+                summaryMap[key] = { year_month: yearMonth, doctor: r.doctor, is_remote: isRemoteNum, total_count: 0 };
+            }
+            summaryMap[key].total_count += count;
+        });
+
+        const insertRows = Object.values(summaryMap);
+        await supabase.from('monthly_summary').delete().eq('year_month', yearMonth);
+        if (insertRows.length > 0) {
+            await supabase.from('monthly_summary').insert(insertRows);
+        }
+        console.log(`[システムログ] ${yearMonth} 分のデータをサマリーへ確定保存しました。`);
+    } catch (e) {
+        console.error("Summary自動上書きエラー:", e);
+    }
+}
+
 // ==========================================
-// 📊 【安定版】3ヶ月分の生データを常に安全に読み込むAPI
+// 📊 【動的ハイブリッド版】1日〜10日判定 ＆ 10日以降自動救出API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
         const now = new Date();
+        const currentDay = now.getDate(); // 今日の日付 (1〜31)
         
         const thisMonthStr = now.toISOString().substring(0, 7); 
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
         const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-        const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7);
+        const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7); // 3ヶ月前（例: "2026-05"）
+
+        let startFilter = "";
+
+        // 💡 【日付判定ルール】
+        if (currentDay <= 10) {
+            // 📅 【1日〜10日の間】 過去3ヶ月分の生データをそのまま全部読み込む（5月も生読み込みするので絶対に凹まない）
+            startFilter = `${twoMonthsAgoStr}-01`;
+        } else {
+            // 📅 【11日〜末日】 生データの読み込みは2ヶ月分（先月・今月）に絞って軽快にする
+            startFilter = `${lastMonthStr}-01`;
+
+            // 🔥 【10日休診・連休対策】11日以降に初めて開いた時、3ヶ月前のサマリーがまだ無ければその場で自動確定ロック
+            const { data: checkSummary } = await supabase
+                .from('monthly_summary')
+                .select('id')
+                .eq('year_month', twoMonthsAgoStr)
+                .limit(1);
+
+            if (!checkSummary || checkSummary.length === 0) {
+                console.log(`[自動救出トリガー] 10日前後にデータが未作成だったため、${twoMonthsAgoStr} 分の確定処理を今実行しました。`);
+                await syncMonthlySummary(twoMonthsAgoStr);
+            }
+        }
 
         const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
         const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
 
         const formattedData = [];
 
-        // 1. 過去データはサマリーテーブルから取得（直近3ヶ月分はここでは除外）
+        // 1. 過去データはサマリーテーブルから取得（生データで読み込む対象月は除外する）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
@@ -187,7 +247,10 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr || r.year_month === twoMonthsAgoStr) return;
+                // 「今月」と「先月」は常にリアルタイム生データを使うためサマリーからは除外
+                if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
+                // 「1日〜10日」の間は、3ヶ月前（先々月）も生データで読むのでサマリーからは除外
+                if (currentDay <= 10 && r.year_month === twoMonthsAgoStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
@@ -199,8 +262,7 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 「先々月」「先月」「今月」の3ヶ月分を常に生データから直接集計（これでバグ要素を完全排除）
-        const startFilter = `${twoMonthsAgoStr}-01`; 
+        // 2. 「生データ（slots）」から動的に決まった範囲を取得して合算
         const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
@@ -234,7 +296,6 @@ app.get("/api/report/all", async (req, res) => {
     }
 });
 
-// ※ データベースの不整合を防ぐため、予約追加時の自動同期（syncMonthlySummary）は呼び出さない形に集約しています
 app.post("/api/update", async (req, res) => {
     const { id, status, doctor, patient_name, patient_id, part, is_remote } = req.body;
     if (!id) return res.json({ status: "ignored" });
@@ -260,6 +321,11 @@ app.post("/api/update", async (req, res) => {
         
         const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
         if (updateError) throw updateError;
+        
+        // 💡 過去の予約が後から書き換えられた場合にも、該当月のサマリーを即時上書き同期して不整合を防ぐ
+        if (currentSlot && currentSlot.date) {
+            await syncMonthlySummary(currentSlot.date.substring(0, 7));
+        }
         
         res.json({ status: "ok" });
     } catch (err) {
