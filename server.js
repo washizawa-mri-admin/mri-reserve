@@ -196,44 +196,51 @@ async function syncMonthlySummary(yearMonth) {
 }
 
 // ==========================================
-// 📊 【動的ハイブリッド版】1日〜10日判定 ＆ 10日以降自動救出API
+// 📊 【安定強化版】1日〜10日判定 ＆ 日本時間完全追従API
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
+        // 💡 サーバー標準時(UTC)のバグを防ぐため、常に日本時間(JST)ベースで年月を計算
         const now = new Date();
-        const currentDay = now.getDate(); // 今日の日付 (1〜31)
+        const jstTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
         
-        const thisMonthStr = now.toISOString().substring(0, 7); 
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthStr = lastMonth.toISOString().substring(0, 7); 
-        const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-        const twoMonthsAgoStr = twoMonthsAgo.toISOString().substring(0, 7); // 3ヶ月前（例: "2026-05"）
+        const currentYear = jstTime.getFullYear();
+        const currentMonth = jstTime.getMonth(); // 0〜11
+        const currentDay = jstTime.getDate(); // 1〜31
+        
+        // 各対象月を YYYY-MM 形式で正確に生成
+        const thisMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+        
+        const lastMonthDate = new Date(currentYear, currentMonth - 1, 1);
+        const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+        
+        const twoMonthsAgoDate = new Date(currentYear, currentMonth - 2, 1);
+        const twoMonthsAgoStr = `${twoMonthsAgoDate.getFullYear()}-${String(twoMonthsAgoDate.getMonth() + 1).padStart(2, '0')}`;
 
         let startFilter = "";
 
         // 💡 【日付判定ルール】
         if (currentDay <= 10) {
-            // 📅 【1日〜10日の間】 過去3ヶ月分の生データをそのまま全部読み込む（5月も生読み込みするので絶対に凹まない）
+            // 📅 【1日〜10日の間】 過去3ヶ月分の生データをそのまま全部読み込む
             startFilter = `${twoMonthsAgoStr}-01`;
         } else {
-            // 📅 【11日〜末日】 生データの読み込みは2ヶ月分（先月・今月）に絞って軽快にする
+            // 📅 【11日〜末日】 生データの読み込みは2ヶ月分（先月・今月）に絞る
             startFilter = `${lastMonthStr}-01`;
 
-            // 🔥 【バグ修正箇所】11日以降に初めて開いた時、3ヶ月前のサマリーがまだ無ければその場で自動確定ロック
+            // 🔥 【10日休診対策】3ヶ月前のサマリーがまだ無ければその場で自動確定ロック
             const { data: checkSummary, error: checkError } = await supabase
                 .from('monthly_summary')
                 .select('id')
                 .eq('year_month', twoMonthsAgoStr);
 
-            // 空配列（length === 0）の場合、あるいはデータが無い場合に確実に保存処理が走るように修正
             if (!checkError && (!checkSummary || checkSummary.length === 0)) {
-                console.log(`[自動救出トリガー] 10日前後にデータが未作成だったため、${twoMonthsAgoStr} 分の確定処理を今実行しました。`);
+                console.log(`[自動救出トリガー] ${twoMonthsAgoStr} 分の確定処理を今実行しました。`);
                 await syncMonthlySummary(twoMonthsAgoStr);
             }
         }
 
-        const threeYearsAgo = new Date(now.getFullYear() - 3, 0, 1);
-        const cutoffMonthStr = threeYearsAgo.toISOString().substring(0, 7);
+        const threeYearsAgo = new Date(currentYear - 3, 0, 1);
+        const cutoffMonthStr = `${threeYearsAgo.getFullYear()}-${String(threeYearsAgo.getMonth() + 1).padStart(2, '0')}`;
 
         const formattedData = [];
 
@@ -263,7 +270,7 @@ app.get("/api/report/all", async (req, res) => {
         }
 
         // 2. 「生データ（slots）」から動的に決まった範囲を取得して合算
-        const lastDayOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const lastDayOfThisMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
         const { data: realTimeData, error: realTimeError } = await supabase
@@ -322,7 +329,7 @@ app.post("/api/update", async (req, res) => {
         const { error: updateError } = await supabase.from('slots').update(updateData).eq('id', id);
         if (updateError) throw updateError;
         
-        // 💡 過去の予約が後から書き換えられた場合にも、該当月のサマリーを即時上書き同期して不整合を防ぐ
+        // 過去の予約が後から書き換えられた場合にも即時同期
         if (currentSlot && currentSlot.date) {
             await syncMonthlySummary(currentSlot.date.substring(0, 7));
         }
