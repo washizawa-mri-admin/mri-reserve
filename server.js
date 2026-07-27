@@ -159,15 +159,51 @@ app.post("/api/delete", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+// 🔄 1000件制限を突破して全データ件数を安全に取得するヘルパー関数
+async function fetchAllSlots(startFilter, endFilter) {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('slots')
+            .select('date, doctor, is_remote, is_extra, status')
+            .eq('status', 'done')
+            .gte('date', startFilter)
+            .lte('date', endFilter)
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) {
+            console.error("slots取得エラー:", error);
+            break;
+        }
+
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            if (data.length < pageSize) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    return allData;
+}
+
 // 🔄 サマリーテーブルへ安全に上書き保存する内部共通関数
 async function syncMonthlySummary(yearMonth) {
     if (!yearMonth) return;
     try {
-        const { data } = await supabase
-            .from('slots')
-            .select('doctor, is_remote, is_extra')
-            .eq('status', 'done')
-            .like('date', `${yearMonth}%`);
+        const lastDay = new Date(Number(yearMonth.split('-')[0]), Number(yearMonth.split('-')[1]), 0).getDate();
+        const startFilter = `${yearMonth}-01`;
+        const endFilter = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+
+        // 💡 1000件上限突破関数で取得
+        const data = await fetchAllSlots(startFilter, endFilter);
 
         if (!data) return;
 
@@ -196,7 +232,7 @@ async function syncMonthlySummary(yearMonth) {
 }
 
 // ==========================================
-// 📊 【最強セーフティ版】データ漏れ絶対阻止API
+// 📊 【1000件限界突破版】集計レポートAPI
 // ==========================================
 app.get("/api/report/all", async (req, res) => {
     try {
@@ -216,29 +252,20 @@ app.get("/api/report/all", async (req, res) => {
         const twoMonthsAgoStr = `${twoMonthsAgoDate.getFullYear()}-${String(twoMonthsAgoDate.getMonth() + 1).padStart(2, '0')}`;
 
         let startFilter = "";
-        let forceLiveReadForTwoMonthsAgo = false; // 5月を生データから強制フェッチするかどうかのフラグ
+        let forceLiveReadForTwoMonthsAgo = false;
 
-        // 💡 【日付判定ルール】
         if (currentDay <= 10) {
-            // 📅 1日〜10日：過去3ヶ月分（5, 6, 7月）を生データから直接読む
             startFilter = `${twoMonthsAgoStr}-01`;
         } else {
-            // 📅 11日〜末日：通常は過去2ヶ月分（6, 7月）に絞るが…
             startFilter = `${lastMonthStr}-01`;
 
-            // 🔥 【超強力安全弁】5月のサマリーが存在するかチェック
             const { data: checkSummary, error: checkError } = await supabase
                 .from('monthly_summary')
                 .select('id')
                 .eq('year_month', twoMonthsAgoStr);
 
             if (!checkError && (!checkSummary || checkSummary.length === 0)) {
-                console.log(`[警告] ${twoMonthsAgoStr}のサマリーテーブルが空です。生データからの強制救出モードで動作します。`);
-                
-                // 1. 裏でサマリーの同期を試みる
                 await syncMonthlySummary(twoMonthsAgoStr);
-                
-                // 2. フロントへのレスポンス漏れを防ぐため、フィルターの開始地点を強制的に5月1日まで広げる！
                 startFilter = `${twoMonthsAgoStr}-01`;
                 forceLiveReadForTwoMonthsAgo = true;
             }
@@ -249,7 +276,7 @@ app.get("/api/report/all", async (req, res) => {
 
         const formattedData = [];
 
-        // 1. サマリーテーブルから過去データを取得
+        // 1. サマリーテーブルから過去データを取得（サマリーは数行程度なので1000件には届かない）
         const { data: summaryData, error: summaryError } = await supabase
             .from('monthly_summary')
             .select('year_month, doctor, is_remote, total_count')
@@ -259,15 +286,11 @@ app.get("/api/report/all", async (req, res) => {
 
         if (summaryData) {
             summaryData.forEach(r => {
-                // 「今月」と「先月」は常にリアルタイム生データを使うため除外
                 if (r.year_month === thisMonthStr || r.year_month === lastMonthStr) return;
-                
-                // 1〜10日の間、または5月のサマリーがなくて強制生読み込み中の場合は、サマリーからの重複重複を防ぐために除外
                 if ((currentDay <= 10 || forceLiveReadForTwoMonthsAgo) && r.year_month === twoMonthsAgoStr) return;
 
                 const remoteVal = (r.is_remote === 1 || r.is_remote === true || r.is_remote === "1" || r.is_remote === "true") ? 1 : 0;
                 formattedData.push({
-                    // ⚠️ フロントの表記バグ対策：確実にYYYY-MM-01形式にして返す
                     date: r.year_month.includes('-01') ? r.year_month : `${r.year_month}-01`,
                     doctor: r.doctor && r.doctor.trim() !== "" ? r.doctor : "未選択",
                     is_remote: remoteVal,
@@ -276,18 +299,12 @@ app.get("/api/report/all", async (req, res) => {
             });
         }
 
-        // 2. 「生データ（slots）」から動的範囲を取得してマージ
+        // 2. 「生データ（slots）」から1000件上限を突破（ページネーション取得）して全件フェッチ
         const lastDayOfThisMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         const endFilter = `${thisMonthStr}-${String(lastDayOfThisMonth).padStart(2, '0')}`;   
 
-        const { data: realTimeData, error: realTimeError } = await supabase
-            .from('slots')
-            .select('date, doctor, is_remote, is_extra, status')
-            .eq('status', 'done')
-            .gte('date', startFilter)
-            .lte('date', endFilter);
-
-        if (realTimeError) throw realTimeError;
+        // 💡 1000件の上限を無視してループ取得する関数を実行
+        const realTimeData = await fetchAllSlots(startFilter, endFilter);
 
         if (realTimeData) {
             realTimeData.forEach(r => {
