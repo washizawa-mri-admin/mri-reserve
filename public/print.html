@@ -229,4 +229,31 @@
                 for(let i=0; i<6; i++) {
                     const slot = extraSlotsByDay[i][j];
                     let cellClass = '', nameContent = '', partContent = '';
-                    if (slot)
+                    if (slot) {
+                        const idStr = slot.patient_id ? `<span class="patient-id-sub">${slot.patient_id}</span>` : '';
+                        const nameStr = slot.patient_name ? `<span class="patient-name-main">${slot.patient_name}</span>` : (slot.status === 'done' ? '<span class="patient-name-main">---</span>' : '');
+                        nameContent = `<div class="name-cell ${cellClass}">${idStr}${nameStr}</div>`;
+                        partContent = slot.part || '';
+                        dailyCounts[i]++;
+                        if (slot.status === 'done' || slot.status === '完了') cellClass = 'done-past';
+                    } else {
+                        nameContent = '';
+                    }
+                    row += `<td class="${cellClass}">${nameContent}</td><td class="part-cell ${cellClass}">${partContent}</td>`;
+                }
+                extraBRows.innerHTML += row + "</tr>";
+            }
+        }
+
+        // 件数合計の表示
+        dailyCounts.forEach(count => { tRow.innerHTML += `<td colspan="2">${count} 件</td>`; });
+    }
+
+    function shiftWeek(n) { 
+        monday.setDate(monday.getDate() + (n * 7)); 
+        load(); 
+    }
+    load();
+</script>
+</body>
+</html>
